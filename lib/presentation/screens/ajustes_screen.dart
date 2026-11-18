@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/datasources/local_storage_service.dart';
-import '../../domain/services/whatsapp_parser_service.dart';
 import '../providers/ajustador_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
@@ -18,8 +18,6 @@ class AjustesScreen extends ConsumerStatefulWidget {
 
 class _AjustesScreenState extends ConsumerState<AjustesScreen> {
   final _sheetIdController = TextEditingController();
-  final _testParserController = TextEditingController();
-  ParsedCabinaMessage? _testParserResult;
   bool _isTestingSheet = false;
 
   @override
@@ -34,26 +32,27 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
   @override
   void dispose() {
     _sheetIdController.dispose();
-    _testParserController.dispose();
     super.dispose();
   }
 
   Future<void> _saveSpreadsheetId() async {
-    final id = _sheetIdController.text.trim();
-    if (id.isEmpty) {
+    final rawInput = _sheetIdController.text.trim();
+    if (rawInput.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingrese un ID de hoja válido.')),
+        const SnackBar(content: Text('Ingrese un ID o enlace de hoja válido.')),
       );
       return;
     }
 
     setState(() => _isTestingSheet = true);
-    await LocalStorageService.setSpreadsheetId(id);
+    final cleanId = LocalStorageService.sanitizeSpreadsheetId(rawInput);
+    _sheetIdController.text = cleanId;
+    await LocalStorageService.setSpreadsheetId(cleanId);
 
     try {
       final sheetsService = ref.read(googleSheetsServiceProvider);
       if (sheetsService.isSignedIn) {
-        await sheetsService.ensureSheetTabsAndHeaders(id);
+        await sheetsService.ensureSheetTabsAndHeaders(cleanId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -66,8 +65,8 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('ID guardado. Inicie sesión con Google para verificar la hoja.'),
-              backgroundColor: AppColors.statusAsignado,
+              content: Text('✅ Enlace/ID guardado correctamente.'),
+              backgroundColor: AppColors.statusConcluido,
             ),
           );
         }
@@ -76,13 +75,87 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Aviso al verificar hoja: $e'),
-            backgroundColor: AppColors.statusCancelado,
+            content: Text('ID guardado. Aviso al verificar hoja: $e'),
+            backgroundColor: AppColors.statusAsignado,
           ),
         );
       }
     } finally {
       if (mounted) setState(() => _isTestingSheet = false);
+    }
+  }
+
+  Future<void> _openSpreadsheetInDrive() async {
+    final url = LocalStorageService.getSpreadsheetUrl();
+    if (url != null) {
+      final uri = Uri.parse(url);
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No se pudo abrir el enlace: $e')),
+          );
+        }
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Ingrese y guarde primero la URL o ID de su hoja de cálculo.'),
+          backgroundColor: AppColors.statusAsignado,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    final authNotifier = ref.read(authProvider.notifier);
+    final success = await authNotifier.signIn();
+    if (!success && mounted) {
+      final error = ref.read(authProvider).error;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.info_outline, color: AppColors.primaryLight),
+              SizedBox(width: 8),
+              Text('Cuenta de Google', style: TextStyle(fontSize: 16)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'No se pudo conectar con Google en este momento.',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (error != null) ...[
+                Text(
+                  'Detalle:\n$error',
+                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.blueGrey),
+                ),
+                const SizedBox(height: 10),
+              ],
+              const Text(
+                'Recomendaciones:\n'
+                '• En Android: Revisa que en Google Cloud Console tengas agregada la huella SHA-1 de tu APK y el paquete "com.aach.asignacionsiniestros".\n'
+                '• En la pantalla de consentimiento OAuth, agrega tu correo como usuario de prueba.\n\n'
+                '💡 Recuerda: Puedes abrir y consultar tu hoja directamente con el botón "Abrir en Drive" sin necesidad de inicio de sesión.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
@@ -129,7 +202,7 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Ajustador ${nombreCtrl.text.trim()} agregado con éxito.'),
+                    content: Text('Ajustador ${nombreCtrl.text.trim()} agregado.'),
                     backgroundColor: AppColors.statusConcluido,
                   ),
                 );
@@ -228,34 +301,6 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
     );
   }
 
-  void _confirmRestoreDefaults() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Restablecer Ajustadores'),
-        content: const Text(
-          'Se cargarán los ajustadores iniciales del despacho (Sergio Sanchez, Andres Gudiño, Alejandro Chavez, Armando, Luis, Axel, Ian).\n\n¿Desea continuar?',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () {
-              ref.read(ajustadoresProvider.notifier).restoreDefaults();
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Catálogo de ajustadores restablecido a los valores predeterminados.'),
-                  backgroundColor: AppColors.statusConcluido,
-                ),
-              );
-            },
-            child: const Text('Restablecer'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
@@ -329,8 +374,10 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
                             label: const Text('Cerrar Sesión'),
                           )
                         : ElevatedButton.icon(
-                            onPressed: () => ref.read(authProvider.notifier).signIn(),
-                            icon: const Icon(Icons.login_rounded, size: 16),
+                            onPressed: authState.isLoading ? null : _handleGoogleSignIn,
+                            icon: authState.isLoading
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.login_rounded, size: 16),
                             label: const Text('Iniciar Sesión con Google'),
                           ),
                   ),
@@ -354,32 +401,45 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'ID de la Hoja de Cálculo (Spreadsheet ID):',
+                    'ID o Enlace de la Hoja de Cálculo (Spreadsheet ID):',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                   ),
                   const SizedBox(height: 6),
                   TextField(
                     controller: _sheetIdController,
                     decoration: const InputDecoration(
-                      hintText: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms',
+                      hintText: 'Ej. 1mh_cS0wWdEYFhUn0lRergJc6UPVcMKAhymgasAr4e0w',
                       prefixIcon: Icon(Icons.table_chart_outlined),
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Obténgalo de la URL de su hoja: https://docs.google.com/spreadsheets/d/<ID>/edit',
+                    'Puedes pegar el ID o la URL completa de Google Sheets.',
                     style: TextStyle(fontSize: 11, color: theme.hintColor),
                   ),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isTestingSheet ? null : _saveSpreadsheetId,
-                      icon: _isTestingSheet
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.save_rounded, size: 16),
-                      label: const Text('Guardar e Inicializar Pestañas'),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: ElevatedButton.icon(
+                          onPressed: _isTestingSheet ? null : _saveSpreadsheetId,
+                          icon: _isTestingSheet
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.save_rounded, size: 16),
+                          label: const Text('Guardar Hoja'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: OutlinedButton.icon(
+                          onPressed: _openSpreadsheetInDrive,
+                          icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                          label: const Text('Abrir en Drive'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -392,19 +452,10 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _buildSectionHeader('3. Catálogo de Ajustadores (${ajustadores.length})'),
-              Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Restablecer ajustadores iniciales',
-                    icon: const Icon(Icons.restore_rounded, size: 20),
-                    onPressed: _confirmRestoreDefaults,
-                  ),
-                  TextButton.icon(
-                    onPressed: _showAddAjustadorDialog,
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Agregar'),
-                  ),
-                ],
+              TextButton.icon(
+                onPressed: _showAddAjustadorDialog,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Agregar'),
               ),
             ],
           ),
@@ -425,9 +476,9 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
                           const Text('No hay ajustadores registrados.'),
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
-                            onPressed: _confirmRestoreDefaults,
-                            icon: const Icon(Icons.restore_rounded, size: 16),
-                            label: const Text('Cargar Ajustadores Iniciales'),
+                            onPressed: _showAddAjustadorDialog,
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('Agregar Ajustador'),
                           ),
                         ],
                       ),
@@ -438,11 +489,10 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
                       for (int i = 0; i < ajustadores.length; i++) ...[
                         if (i > 0) const Divider(height: 1, indent: 64),
                         ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                           leading: CircleAvatar(
                             backgroundColor: ajustadores[i].activo
                                 ? AppColors.primaryLight.withValues(alpha: 0.15)
-                                : Colors.grey.shade300,
+                                : Colors.grey.shade200,
                             child: Text(
                               ajustadores[i].nombre.isNotEmpty ? ajustadores[i].nombre[0].toUpperCase() : '?',
                               style: TextStyle(
@@ -451,50 +501,46 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
                               ),
                             ),
                           ),
-                          title: Row(
+                          title: Text(
+                            ajustadores[i].nombre,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: ajustadores[i].activo ? null : theme.disabledColor,
+                            ),
+                          ),
+                          subtitle: Row(
                             children: [
-                              Flexible(
-                                child: Text(
-                                  ajustadores[i].nombre,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: ajustadores[i].activo ? null : Colors.grey,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                              Icon(Icons.phone_iphone_rounded, size: 12, color: theme.hintColor),
+                              const SizedBox(width: 4),
+                              Text(
+                                ajustadores[i].telefonoWhatsApp,
+                                style: TextStyle(fontSize: 12, color: theme.hintColor),
                               ),
                               if (!ajustadores[i].activo) ...[
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: Colors.grey.shade200,
-                                    borderRadius: BorderRadius.circular(6),
+                                    borderRadius: BorderRadius.circular(4),
                                   ),
-                                  child: const Text(
-                                    'Inactivo',
-                                    style: TextStyle(fontSize: 10, color: Colors.grey),
-                                  ),
+                                  child: const Text('Inactivo', style: TextStyle(fontSize: 10, color: Colors.grey)),
                                 ),
                               ],
                             ],
-                          ),
-                          subtitle: Text(
-                            '📱 ${ajustadores[i].telefonoWhatsApp}',
-                            style: TextStyle(fontSize: 12, color: theme.hintColor),
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
                                 icon: const Icon(Icons.edit_outlined, size: 18),
-                                tooltip: 'Editar datos',
+                                tooltip: 'Editar',
                                 onPressed: () => _showEditAjustadorDialog(ajustadores[i]),
                               ),
                               IconButton(
                                 icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.statusCancelado),
-                                tooltip: 'Eliminar ajustador',
+                                tooltip: 'Eliminar',
                                 onPressed: () => _confirmDeleteAjustador(ajustadores[i]),
                               ),
                               Switch(
@@ -511,67 +557,8 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
           ),
           const SizedBox(height: 16),
 
-          // 4. Laboratorio de Pruebas: Parser Inteligente de Cabina
-          _buildSectionHeader('4. Laboratorio del Parser WhatsApp'),
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: AppColors.borderLight),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(14.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Pruebe cómo extrae los campos de cualquier mensaje de cabina en tiempo real:',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _testParserController,
-                    maxLines: 3,
-                    onChanged: (text) {
-                      setState(() {
-                        _testParserResult = WhatsAppParserService.parse(text);
-                      });
-                    },
-                    decoration: const InputDecoration(
-                      hintText: 'Pegue aquí un mensaje de prueba (Quálitas, GNP, Inbursa, etc.)...',
-                    ),
-                  ),
-                  if (_testParserResult != null && _testParserResult!.hasContent) ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('• Folio: ${_testParserResult?.folio ?? "--"}'),
-                          Text('• Aseguradora: ${_testParserResult?.aseguradora ?? "--"}'),
-                          Text('• Asegurado: ${_testParserResult?.asegurado ?? "--"}'),
-                          Text('• Teléfono: ${_testParserResult?.telefonoAsegurado ?? "--"}'),
-                          Text('• Auto / Placas: ${_testParserResult?.vehiculo ?? "--"} [${_testParserResult?.placas ?? "--"}]'),
-                          Text('• Color: ${_testParserResult?.colorVehiculo ?? "--"}'),
-                          Text('• Ubicación: ${_testParserResult?.ubicacion ?? "--"}'),
-                          Text('• Link Maps: ${_testParserResult?.linkMaps ?? "--"}'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // 5. Tema y Apariencia
-          _buildSectionHeader('5. Preferencias'),
+          // 4. Tema y Apariencia
+          _buildSectionHeader('4. Preferencias'),
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(

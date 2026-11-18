@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/export_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../data/datasources/local_storage_service.dart';
 import '../providers/ajustador_provider.dart';
 import '../providers/metrics_provider.dart';
 import '../widgets/metric_summary_card.dart';
@@ -280,18 +282,34 @@ class MetricasCorteScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 20),
 
-          // 5. Botones de Exportación
+          // 5. Botones Operativos de Consulta y Resumen
           ElevatedButton.icon(
-            onPressed: siniestros.isEmpty
-                ? null
-                : () => ExportService.shareCorteWhatsApp(
-                      siniestros: siniestros,
-                      periodoLabel: filter.dateRange.label,
-                    ),
-            icon: const Icon(Icons.share_rounded),
-            label: const Text('Compartir Corte por WhatsApp'),
+            onPressed: () async {
+              final url = LocalStorageService.getSpreadsheetUrl();
+              if (url != null) {
+                final uri = Uri.parse(url);
+                try {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('No se pudo abrir el navegador: $e')),
+                    );
+                  }
+                }
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('⚠️ Primero configura la URL o ID de tu hoja en la pestaña "Ajustes".'),
+                    backgroundColor: AppColors.statusAsignado,
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.table_chart_rounded),
+            label: const Text('Consultar Archivo en Google Drive'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.whatsappGreen,
+              backgroundColor: AppColors.primaryLight,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
@@ -300,9 +318,12 @@ class MetricasCorteScreen extends ConsumerWidget {
           OutlinedButton.icon(
             onPressed: siniestros.isEmpty
                 ? null
-                : () => ExportService.exportSiniestrosToCsv(siniestros),
-            icon: const Icon(Icons.file_download_outlined),
-            label: const Text('Exportar a Archivo CSV / Excel'),
+                : () => ExportService.shareCorteWhatsApp(
+                      siniestros: siniestros,
+                      periodoLabel: filter.dateRange.label,
+                    ),
+            icon: const Icon(Icons.share_rounded, color: AppColors.whatsappGreen),
+            label: const Text('Compartir Resumen por WhatsApp'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),

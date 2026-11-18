@@ -499,6 +499,11 @@ class WhatsAppParserService {
       for (final m in matches) {
         final val = (m.groupCount >= 1 ? m.group(1) : m.group(0))?.trim();
         if (val != null && val.isNotEmpty && !val.startsWith('http')) {
+          final lower = val.toLowerCase();
+          // Descartar encabezados de tablas impresas de cabina (ej: "Esquina colonia C.P")
+          if (lower.contains('colonia c.p') || lower.contains('colonia cp') || lower == 'esquina') {
+            continue;
+          }
           found.add(val.cleanWhitespace());
         }
       }

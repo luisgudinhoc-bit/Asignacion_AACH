@@ -453,8 +453,23 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                     ),
               const SizedBox(height: 16),
 
-              // 5. Ubicación y Referencias (Municipio, Estado, Referencias, Maps opcional)
-              _buildSectionTitle('4. Ubicación y Referencias'),
+              // 4. Ubicación y Referencias (Municipio, Estado, Referencias, Maps opcional)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildSectionTitle('4. Ubicación y Referencias'),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                      foregroundColor: AppColors.primaryLight,
+                    ),
+                    icon: const Icon(Icons.alt_route_rounded, size: 16),
+                    label: const Text('Tramos Arco Norte (Km)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    onPressed: () => _showArcoNorteModal(context),
+                  ),
+                ],
+              ),
               Row(
                 children: [
                   Expanded(
@@ -757,6 +772,150 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
           color: AppColors.primaryLight,
         ),
       ),
+    );
+  }
+
+  /// Muestra la tabla de tramos carreteros y kilometrajes de Arco Norte
+  void _showArcoNorteModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        String filter = '';
+        return StatefulBuilder(
+          builder: (modalCtx, setModalState) {
+            final filteredTramos = ArcoNorteService.tramos.where((t) {
+              if (filter.isEmpty) return true;
+              final q = filter.toLowerCase();
+              return t.localidad.toLowerCase().contains(q) ||
+                  t.codigoPostal.contains(q) ||
+                  t.tramoKilometrico.toLowerCase().contains(q) ||
+                  t.estado.toLowerCase().contains(q);
+            }).toList();
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.75,
+              maxChildSize: 0.92,
+              minChildSize: 0.45,
+              expand: false,
+              builder: (context, scrollController) {
+                return Column(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[400],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.alt_route_rounded, color: AppColors.primaryLight),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'Tramos Carreteros Arco Norte',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(modalCtx),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Buscar por km, localidad o C.P. (ej. 182, Sahagún)',
+                          prefixIcon: const Icon(Icons.search),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onChanged: (val) {
+                          setModalState(() {
+                            filter = val;
+                          });
+                        },
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView.separated(
+                        controller: scrollController,
+                        itemCount: filteredTramos.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final tramo = filteredTramos[i];
+                          return ListTile(
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    tramo.localidad,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryLight.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'CP ${tramo.codigoPostal}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.primaryLight,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            subtitle: Text(
+                              '${tramo.tramoKilometrico} • ${tramo.estado}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                            onTap: () {
+                              setState(() {
+                                _municipioController.text = tramo.localidad;
+                                _estadoController.text = tramo.estado;
+                                _referenciasController.text = 'Autopista Arco Norte ${tramo.tramoKilometrico}';
+                                _mapsController.text =
+                                    'https://www.google.com/maps?q=${tramo.latitud},${tramo.longitud}(Arco+Norte+${tramo.localidad})';
+                              });
+                              Navigator.pop(modalCtx);
+                              ScaffoldMessenger.of(this.context).showSnackBar(
+                                SnackBar(
+                                  content: Text('🛣️ Tramo seleccionado: ${tramo.localidad} (${tramo.tramoKilometrico})'),
+                                  backgroundColor: AppColors.statusConcluido,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

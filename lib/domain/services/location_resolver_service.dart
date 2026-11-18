@@ -61,31 +61,64 @@ class LocationResolverService {
 
   /// Extrae coordenadas latitud y longitud de patrones estándar de URLs de Google Maps
   static Map<String, double>? _extractCoordsFromText(String text) {
-    // Patrón 1: @19.4326,-99.1332 o /@20.0534444,-98.7417778
+    if (text.isEmpty) return null;
+
+    // Patrón 1: /search/20.111754,+-98.775108 o /search/20.111754,-98.775108
+    final searchMatch = RegExp(r'\/search\/(-?\d{1,2}\.\d{3,})(?:%2C|,|\+|\s)+(-?\d{1,3}\.\d{3,})', caseSensitive: false).firstMatch(text);
+    if (searchMatch != null) {
+      final lat = double.tryParse(searchMatch.group(1)!);
+      final lng = double.tryParse(searchMatch.group(2)!);
+      if (lat != null && lng != null && _isValidCoord(lat, lng)) {
+        return {'lat': lat, 'lng': lng};
+      }
+    }
+
+    // Patrón 2: @19.4326,-99.1332 o /@20.0534444,-98.7417778
     final atMatch = RegExp(r'@(-?\d+\.\d+),(-?\d+\.\d+)').firstMatch(text);
     if (atMatch != null) {
       final lat = double.tryParse(atMatch.group(1)!);
       final lng = double.tryParse(atMatch.group(2)!);
-      if (lat != null && lng != null) return {'lat': lat, 'lng': lng};
+      if (lat != null && lng != null && _isValidCoord(lat, lng)) {
+        return {'lat': lat, 'lng': lng};
+      }
     }
 
-    // Patrón 2: ?q=19.4326,-99.1332 o &query=19.4326,-99.1332 o ?ll=19.4326,-99.1332
-    final queryMatch = RegExp(r'[?&](?:q|query|ll)=(-?\d+\.\d+),(-?\d+\.\d+)').firstMatch(text);
+    // Patrón 3: ?q=19.4326,-99.1332 o &query=19.4326,-99.1332 o ?ll=19.4326,-99.1332 o center=19.4326%2C-99.1332
+    final queryMatch = RegExp(r'[?&](?:q|query|ll|center)=(-?\d+\.\d+)(?:%2C|,|\+|\s)+(-?\d+\.\d+)').firstMatch(text);
     if (queryMatch != null) {
       final lat = double.tryParse(queryMatch.group(1)!);
       final lng = double.tryParse(queryMatch.group(2)!);
-      if (lat != null && lng != null) return {'lat': lat, 'lng': lng};
+      if (lat != null && lng != null && _isValidCoord(lat, lng)) {
+        return {'lat': lat, 'lng': lng};
+      }
     }
 
-    // Patrón 3: /place/-?\d+\.\d+,-?\d+\.\d+
-    final placeMatch = RegExp(r'place\/(-?\d+\.\d+),(-?\d+\.\d+)').firstMatch(text);
+    // Patrón 4: /place/...
+    final placeMatch = RegExp(r'place\/[^\/]*\/(-?\d+\.\d+),(-?\d+\.\d+)').firstMatch(text) ??
+        RegExp(r'place\/(-?\d+\.\d+),(-?\d+\.\d+)').firstMatch(text);
     if (placeMatch != null) {
       final lat = double.tryParse(placeMatch.group(1)!);
       final lng = double.tryParse(placeMatch.group(2)!);
-      if (lat != null && lng != null) return {'lat': lat, 'lng': lng};
+      if (lat != null && lng != null && _isValidCoord(lat, lng)) {
+        return {'lat': lat, 'lng': lng};
+      }
+    }
+
+    // Patrón 5: Coordenadas numéricas sueltas típicas de México (latitud 14..33, longitud -86..-118)
+    final looseMatch = RegExp(r'\b(1[4-9]\.\d{4,}|2[0-9]\.\d{4,}|3[0-2]\.\d{4,})\s*[, ]\s*(-9[0-9]\.\d{4,}|-10[0-9]\.\d{4,}|-11[0-8]\.\d{4,})\b').firstMatch(text);
+    if (looseMatch != null) {
+      final lat = double.tryParse(looseMatch.group(1)!);
+      final lng = double.tryParse(looseMatch.group(2)!);
+      if (lat != null && lng != null && _isValidCoord(lat, lng)) {
+        return {'lat': lat, 'lng': lng};
+      }
     }
 
     return null;
+  }
+
+  static bool _isValidCoord(double lat, double lng) {
+    return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
   }
 
   /// Resuelve la URL destino de un enlace acortado para descubrir sus coordenadas
@@ -93,11 +126,19 @@ class LocationResolverService {
     try {
       final client = http.Client();
       final request = http.Request('GET', Uri.parse(shortUrl))..followRedirects = true;
+      request.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
       final response = await client.send(request);
-      final finalUrl = response.headers['location'] ?? response.request?.url.toString() ?? '';
-      client.close();
 
-      return _extractCoordsFromText(finalUrl);
+      final finalUrl = response.headers['location'] ?? response.request?.url.toString() ?? '';
+      var coords = _extractCoordsFromText(finalUrl);
+      if (coords != null) {
+        client.close();
+        return coords;
+      }
+
+      final body = await response.stream.bytesToString();
+      client.close();
+      return _extractCoordsFromText(body);
     } catch (_) {
       return null;
     }
@@ -114,14 +155,16 @@ class LocationResolverService {
         final data = jsonDecode(res.body);
         final addr = data['address'] as Map<String, dynamic>?;
         if (addr != null) {
-          final calle = (addr['road'] ?? addr['highway'] ?? addr['suburb'] ?? '') as String;
-          final muni = (addr['city'] ?? addr['town'] ?? addr['municipality'] ?? addr['county'] ?? '') as String;
+          final calle = (addr['road'] ?? addr['residential'] ?? addr['quarter'] ?? addr['suburb'] ?? addr['neighbourhood'] ?? '') as String;
+          final muni = (addr['city'] ?? addr['town'] ?? addr['municipality'] ?? addr['county'] ?? addr['village'] ?? '') as String;
           final estado = _normalizeEstado((addr['state'] ?? '') as String);
+          final cp = addr['postcode'] != null ? 'CP ${addr['postcode']}' : null;
+          final refFinal = calle.isNotEmpty ? (cp != null ? '$calle, $cp' : calle) : (cp ?? '');
 
           return ResolvedLocation(
             latitude: lat,
             longitude: lng,
-            calle: calle.isNotEmpty ? calle : null,
+            calle: refFinal.isNotEmpty ? refFinal : null,
             municipio: _normalizeMunicipio(muni),
             estado: estado.isNotEmpty ? estado : null,
             direccionCompleta: data['display_name'] as String?,

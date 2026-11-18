@@ -114,12 +114,33 @@ class LocalStorageService {
 
   // ==================== AJUSTES Y CONFIGURACIÓN ====================
 
+  /// Extrae el ID limpio si el usuario pegó una URL completa de Google Sheets
+  static String sanitizeSpreadsheetId(String input) {
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return '';
+    final match = RegExp(r'/spreadsheets/d/([a-zA-Z0-9\-_]+)').firstMatch(trimmed);
+    if (match != null && match.groupCount >= 1) {
+      return match.group(1)!;
+    }
+    return trimmed;
+  }
+
   static String? getSpreadsheetId() {
-    return _settingsBox.get('spreadsheet_id') as String?;
+    final stored = _settingsBox.get('spreadsheet_id') as String?;
+    if (stored == null || stored.isEmpty) return null;
+    return sanitizeSpreadsheetId(stored);
   }
 
   static Future<void> setSpreadsheetId(String id) async {
-    await _settingsBox.put('spreadsheet_id', id);
+    final cleanId = sanitizeSpreadsheetId(id);
+    await _settingsBox.put('spreadsheet_id', cleanId);
+  }
+
+  /// Retorna la URL web directa para abrir el archivo en Google Drive / Google Sheets
+  static String? getSpreadsheetUrl() {
+    final id = getSpreadsheetId();
+    if (id == null || id.isEmpty) return null;
+    return 'https://docs.google.com/spreadsheets/d/$id/edit';
   }
 
   static String? getUserEmail() {
