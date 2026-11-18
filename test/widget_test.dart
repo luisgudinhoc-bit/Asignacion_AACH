@@ -113,6 +113,42 @@ Porfa @Andres Gudiño
       expect(parsed.municipio, 'Pachuca');
       expect(parsed.estado, 'Hidalgo');
     });
+
+    test('Limpia ruido OCR severo con timestamps al final de línea y enlaces rotos', () {
+      const ocrRawChat = '''
+8:09
+Despacho de ajustes...
+Alejandro Chavez
+Reenviado
+3059238 8:04 p. m.
+Alejandro Chavez
+Reenviado
+19:08 19:10 8:04 p. m.
+Alejandro Chavez
+Reenviado
+Daniel Rojas 8:04 p. m.
+Vas @Sergio Sanchez 8:04 p. m.
+Vete por la mexico pachuca 8:04 p. m.
+La pachuca sahagun esta cerrada 8:04 p. m.
+Alejandro Chavez
+Reenviado
+maps.app.goo.gl
+https://maps.app.goo.gl
+/EGbX4taZmYpqBXS98 8:09 p. m.
+Porfa @Andres Gudiño 8:09 p. m.
+Alejandro Chavez
+Porfa @Andres Gudiño
+Voy 8:09 p. m.
+''';
+
+      final parsed = WhatsAppParserService.parse(ocrRawChat);
+
+      expect(parsed.folio, '3059238', reason: 'Debe limpiar "8:04 p. m." pegado al folio');
+      expect(parsed.asegurado, 'Daniel Rojas', reason: 'No debe confundirse con Alejandro Chavez y debe limpiar el timestamp');
+      expect(parsed.ajustador, anyOf('Sergio Sanchez', 'Andres Gudiño'));
+      expect(parsed.linkMaps, 'https://maps.app.goo.gl/EGbX4taZmYpqBXS98', reason: 'Debe reconstruir enlace partido por OCR y limpiar timestamp');
+      expect(parsed.referencias, contains('mexico pachuca'));
+    });
   });
 
   group('LocationResolverService Tests', () {

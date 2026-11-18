@@ -20,6 +20,7 @@ class CabinaParserCard extends StatefulWidget {
 class _CabinaParserCardState extends State<CabinaParserCard> {
   final TextEditingController _rawTextController = TextEditingController();
   ParsedCabinaMessage? _parsedResult;
+  String? _lastOcrRawText;
   bool _isExpanded = true;
   bool _isProcessingImage = false;
 
@@ -56,6 +57,9 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
           : await OcrService.extractTextFromGallery();
 
       if (text != null && text.trim().isNotEmpty) {
+        setState(() {
+          _lastOcrRawText = text;
+        });
         _rawTextController.text = text;
         _processText(text, autoApply: true);
 
@@ -221,6 +225,51 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
                               ),
                             ),
                           ],
+                        ),
+                        // Visor discreto del texto detectado por OCR para depuración en dispositivo
+                        Theme(
+                          data: theme.copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: const EdgeInsets.only(top: 4, bottom: 4),
+                            dense: true,
+                            visualDensity: VisualDensity.compact,
+                            leading: const Icon(Icons.terminal_rounded, size: 16, color: AppColors.primaryLight),
+                            title: const Text(
+                              'Ver texto detectado por OCR',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
+                            ),
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                constraints: const BoxConstraints(maxHeight: 180),
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.black38 : Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isDark ? Colors.white12 : Colors.black12,
+                                  ),
+                                ),
+                                child: SingleChildScrollView(
+                                  child: SelectableText(
+                                    (_lastOcrRawText != null && _lastOcrRawText!.isNotEmpty)
+                                        ? _lastOcrRawText!
+                                        : (_rawTextController.text.isNotEmpty
+                                            ? _rawTextController.text
+                                            : '(Aún no se ha detectado texto. Sube una captura o foto para inspeccionar la lectura cruda de ML Kit).'),
+                                    style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 11,
+                                      color: (_lastOcrRawText != null || _rawTextController.text.isNotEmpty)
+                                          ? (isDark ? Colors.greenAccent.shade100 : Colors.blueGrey.shade900)
+                                          : theme.hintColor,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),

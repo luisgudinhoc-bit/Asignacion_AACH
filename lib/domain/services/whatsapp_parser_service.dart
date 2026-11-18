@@ -61,10 +61,11 @@ class WhatsAppParserService {
       return const ParsedCabinaMessage(rawText: '');
     }
 
-    // Limpiar metadatos de reenvío de WhatsApp (ej: "Alejandro Chavez >> Reenviado", "8:04 p. m.")
-    final cleanedText = _cleanWhatsAppMetadata(rawText);
+    // Etapa 1: Limpieza profunda de ruido de capturas OCR y chat de WhatsApp
+    final cleanedText = _cleanOcrNoise(rawText);
 
-    final linkMaps = _extractMapsUrl(rawText);
+    // Reconstruir enlaces Maps del texto limpio o del original
+    final linkMaps = _extractMapsUrl(cleanedText) ?? _extractMapsUrl(rawText);
     final aseguradora = _extractAseguradora(cleanedText);
     final folio = _extractFolio(cleanedText);
     final ajustador = _extractAjustador(cleanedText);
@@ -110,14 +111,79 @@ class WhatsAppParserService {
     );
   }
 
-  /// Limpia encabezados y sellos de tiempo automáticos de WhatsApp
-  static String _cleanWhatsAppMetadata(String text) {
-    var result = text.replaceAll('*', '');
-    // Remover timestamps como "8:04 p. m.", "[19:08, 17/11/2026]", "Reenviado"
-    result = result.replaceAll(RegExp(r'\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:a\.\s*m\.|p\.\s*m\.|hrs|hr)?\b', caseSensitive: false), '');
-    result = result.replaceAll(RegExp(r'»?\s*Reenviado', caseSensitive: false), '');
-    return result;
+  /// Limpieza especializada de ruido OCR (timestamps, reenvíos, metadatos de chat)
+  static String _cleanOcrNoise(String rawText) {
+    if (rawText.trim().isEmpty) return '';
+
+    var text = rawText.replaceAll('*', '');
+
+    // Reconstruir URLs de Google Maps partidas en dos líneas por el OCR
+    text = text.replaceAll(
+      RegExp(r'(https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps))\/?\s*[\r\n]+\s*\/?([A-Za-z0-9_\-]+)', caseSensitive: false),
+      r'$1/$2',
+    );
+
+    final rawLines = text.split(RegExp(r'[\r\n]+'));
+    final cleanedLines = <String>[];
+
+    // Frecuencia de líneas para detectar remitentes de reenvíos repetidos (ej: "Alejandro Chavez")
+    final lineFrequencies = <String, int>{};
+    for (final l in rawLines) {
+      final t = l.trim();
+      if (t.isNotEmpty) {
+        lineFrequencies[t] = (lineFrequencies[t] ?? 0) + 1;
+      }
+    }
+
+    for (var line in rawLines) {
+      var trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+
+      // 1. Eliminar timestamps pegados al final de cualquier línea
+      // Ej: "3059238 8:04 p. m." -> "3059238", "Daniel Rojas 8:04 p. m." -> "Daniel Rojas"
+      trimmed = trimmed.replaceAll(
+        RegExp(r'\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[ap]\.?\s*m\.?|hrs?|hr)?$', caseSensitive: false),
+        '',
+      ).trim();
+
+      if (trimmed.isEmpty) continue;
+
+      // 2. Descartar líneas iguales a "Reenviado", "Forwarded", "Mensaje reenviado"
+      if (RegExp(r'^(?:»?\s*reenviado|forwarded|mensaje reenviado)$', caseSensitive: false).hasMatch(trimmed)) {
+        continue;
+      }
+
+      // 3. Descartar "maps.app.goo.gl" suelto cuando no tiene https:// ni la ruta del pin
+      if (RegExp(r'^maps\.app\.goo\.gl$', caseSensitive: false).hasMatch(trimmed)) {
+        continue;
+      }
+
+      // 4. Descartar timestamps aislados (ej: "8:04 p. m.", "19:08", "8:09", "19:08 19:10")
+      if (RegExp(r'^\d{1,2}:\d{2}(?::\d{2})?(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?(?:\s*[ap]\.?\s*m\.?|\s*hrs?)?$', caseSensitive: false).hasMatch(trimmed)) {
+        continue;
+      }
+
+      // 5. Descartar cabeceras típicas de grupos de WhatsApp
+      final lower = trimmed.toLowerCase();
+      if (lower.startsWith('despacho de ajustes') ||
+          lower.contains('alejandro, armando, sergio') ||
+          lower == 'hoy' ||
+          lower == 'ayer') {
+        continue;
+      }
+
+      // 6. Descartar remitentes de reenvíos que aparecen repetidos solo como cabecera
+      if ((lineFrequencies[trimmed] ?? 0) > 1 &&
+          RegExp(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,2}$').hasMatch(trimmed)) {
+        continue;
+      }
+
+      cleanedLines.add(trimmed);
+    }
+
+    return cleanedLines.join('\n');
   }
+
 
   /// Extrae el Folio o Número de Siniestro (etiquetado o número aislado como "3059238")
   static String? _extractFolio(String text) {
@@ -233,32 +299,69 @@ class WhatsAppParserService {
       }
     }
 
-    // 2. Línea aislada con 2 o 3 palabras capitalizadas (ej: "Daniel Rojas")
+    // 2. Líneas aisladas que contienen nombres de persona (ej: "Daniel Rojas")
     final lines = text.split(RegExp(r'[\r\n]+'));
+    final candidates = <String>[];
+
+    // Personal operativo y coordinadores que no deben confundirse con el asegurado
+    final staffNames = [
+      'alejandro chavez',
+      'alejandro',
+      'armando',
+      'sergio sanchez',
+      'sergio',
+      'andres gudiño',
+      'andres gudino',
+      'andres',
+      'luis',
+      'axel',
+      'ian',
+    ];
+
     for (final line in lines) {
       final trimmed = line.trim();
-      // Descartar si es un enlace, si tiene números, o si es el ajustador mencionado
+      // Descartar si es un enlace, si tiene números, o si es mención con @
       if (trimmed.startsWith('http') || RegExp(r'\d').hasMatch(trimmed) || trimmed.startsWith('@')) {
         continue;
       }
       if (knownAjustador != null && trimmed.toLowerCase().contains(knownAjustador.toLowerCase())) {
         continue;
       }
-      // Verificar formato de nombre de persona (ej: "Daniel Rojas", "Juan Perez Lopez")
+
+      final lower = trimmed.toLowerCase();
+      if (lower.contains('inbursa') ||
+          lower.contains('mapfre') ||
+          lower.contains('crabi') ||
+          lower.contains('seguros') ||
+          lower.contains('qualitas') ||
+          lower.contains('quálitas') ||
+          lower.contains('pachuca') ||
+          lower.contains('sahagun') ||
+          lower.contains('sahagún') ||
+          lower.contains('despacho') ||
+          lower.contains('cabina') ||
+          lower.startsWith('vas ') ||
+          lower.startsWith('porfa') ||
+          lower == 'voy') {
+        continue;
+      }
+
+      // Descartar si coincide con el staff del despacho
+      final isStaff = staffNames.any((s) => lower == s || lower.startsWith('$s '));
+      if (isStaff) {
+        continue;
+      }
+
+      // Validar formato de nombre propio (2 a 4 palabras capitalizadas, ej: "Daniel Rojas")
       if (RegExp(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3}$').hasMatch(trimmed)) {
-        // Descartar si es nombre de aseguradora o frase común
-        final lower = trimmed.toLowerCase();
-        if (!lower.contains('inbursa') &&
-            !lower.contains('mapfre') &&
-            !lower.contains('chavez') && // coordinador
-            !lower.contains('pachuca') &&
-            !lower.contains('sahagun')) {
-          return trimmed.capitalizeWords();
-        }
+        candidates.add(trimmed.capitalizeWords());
       }
     }
 
-    return null;
+    if (candidates.isEmpty) return null;
+
+    // Si hay más de un candidato, preferir el que esté más abajo en el chat
+    return candidates.last;
   }
 
   /// Extrae el Teléfono de contacto
@@ -283,14 +386,33 @@ class WhatsAppParserService {
     return null;
   }
 
-  /// Extrae el link de Google Maps
+  /// Extrae el link de Google Maps (completo o reconstruido de líneas separadas)
   static String? _extractMapsUrl(String text) {
+    // 1. URL completa en una sola línea
     final reg = RegExp(
       r'(https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps|www\.google\.com\/maps|maps\.google\.com)[^\s\n\r]+)',
       caseSensitive: false,
     );
     final match = reg.firstMatch(text);
-    return match?.group(1)?.trim();
+    if (match != null) {
+      return match.group(1)?.trim();
+    }
+
+    // 2. Fallback: URL dividida en dos líneas en capturas OCR
+    final splitReg = RegExp(
+      r'(https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps))\/?\s*[\r\n]+\s*\/?([A-Za-z0-9_\-]+)',
+      caseSensitive: false,
+    );
+    final splitMatch = splitReg.firstMatch(text);
+    if (splitMatch != null) {
+      final base = splitMatch.group(1)?.trim();
+      final slug = splitMatch.group(2)?.trim();
+      if (base != null && slug != null) {
+        return '$base/$slug';
+      }
+    }
+
+    return null;
   }
 
   /// Extrae placas del vehículo
