@@ -19,14 +19,12 @@ class AppConstants {
     'Otra Compañía',
   ];
 
-  // Tipos de Eventos / Siniestros
+  // Tipos de Eventos / Siniestros solicitados para despacho
   static const List<String> tiposEvento = [
     'Choque',
     'Robo',
     'Cristal',
-    'Asistencia Vial',
-    'Daños a Terceros',
-    'Incendio',
+    'Diverso',
     'Otro',
   ];
 

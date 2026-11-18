@@ -45,6 +45,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
   final _mapsController = TextEditingController();
 
   final _observacionesController = TextEditingController();
+  final _otroTipoEventoController = TextEditingController();
 
   // Estados de selección rápida (Chips)
   String _selectedAseguradora = 'Inbursa';
@@ -85,6 +86,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     _referenciasController.dispose();
     _mapsController.dispose();
     _observacionesController.dispose();
+    _otroTipoEventoController.dispose();
     super.dispose();
   }
 
@@ -170,6 +172,9 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
       if (parsed.tipoEvento != null && parsed.tipoEvento!.isNotEmpty) {
         _selectedTipoEvento = parsed.tipoEvento!;
       }
+      if (parsed.detalleEvento != null && parsed.detalleEvento!.isNotEmpty) {
+        _otroTipoEventoController.text = parsed.detalleEvento!;
+      }
       if (parsed.observaciones != null && parsed.observaciones!.isNotEmpty) {
         _observacionesController.text = parsed.observaciones!;
       }
@@ -251,12 +256,17 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     }
 
     final now = DateTime.now();
+    final tipoEventoFinal = ((_selectedTipoEvento == 'Diverso' || _selectedTipoEvento == 'Otro') &&
+            _otroTipoEventoController.text.trim().isNotEmpty)
+        ? '$_selectedTipoEvento: ${_otroTipoEventoController.text.trim()}'
+        : _selectedTipoEvento;
+
     final nuevoSiniestro = SiniestroModel(
       folio: _folioController.text.trim().toUpperCase(),
       aseguradora: _selectedAseguradora,
       ajustador: _selectedAjustadorNombre,
       estatus: SiniestroEstatus.asignado,
-      tipoEvento: _selectedTipoEvento,
+      tipoEvento: tipoEventoFinal,
       municipio: _municipioController.text.trim(),
       estado: _estadoController.text.trim(),
       referencias: _referenciasController.text.trim(),
@@ -326,6 +336,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     _referenciasController.clear();
     _mapsController.clear();
     _observacionesController.clear();
+    _otroTipoEventoController.clear();
     setState(() {
       _selectedTipoEvento = 'Choque';
       _selectedAseguradora = 'Inbursa';
@@ -566,7 +577,6 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                             setState(() {
                               _municipioController.text = match.localidad;
                               _estadoController.text = match.estado;
-                              _mapsController.text = match.linkGoogleMaps;
                             });
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
@@ -615,7 +625,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               ),
               const SizedBox(height: 16),
 
-              // 6. Tipo de Evento (ChoiceChips)
+              // 5. Tipo de Evento (ChoiceChips: Choque, Robo, Cristal, Diverso, Otro)
               _buildSectionTitle('5. Tipo de Evento'),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -635,9 +645,22 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                   }).toList(),
                 ),
               ),
+              if (_selectedTipoEvento == 'Diverso' || _selectedTipoEvento == 'Otro') ...[
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _otroTipoEventoController,
+                  decoration: InputDecoration(
+                    hintText: _selectedTipoEvento == 'Diverso'
+                        ? 'Especificar evento diverso (ej: Semoviente, Bache, Animal...)'
+                        : 'Especificar otro tipo de siniestro...',
+                    prefixIcon: const Icon(Icons.edit_note_rounded),
+                    isDense: true,
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
 
-              // 7. Datos del Vehículo
+              // 6. Datos del Vehículo (Marca/Submarca y Color en primer plano)
               _buildSectionTitle('6. Datos del Vehículo'),
               Row(
                 children: [
@@ -657,36 +680,54 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                     child: TextFormField(
                       controller: _colorController,
                       decoration: const InputDecoration(
-                        hintText: 'Color',
+                        hintText: 'Color (ej: Blanco)',
+                        prefixIcon: Icon(Icons.palette_outlined),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _placasController,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(
-                        hintText: 'Placas (ej: NXZ-4433)',
-                        prefixIcon: Icon(Icons.pin_outlined),
-                      ),
-                    ),
+              // Placas y Póliza colapsables (opcionales)
+              Theme(
+                data: theme.copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  title: Text(
+                    'Datos adicionales de cabina (Placas / Póliza - opcional)',
+                    style: TextStyle(fontSize: 12, color: theme.hintColor),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _polizaController,
-                      decoration: const InputDecoration(
-                        hintText: 'Póliza / Inciso',
-                        prefixIcon: Icon(Icons.article_outlined),
-                      ),
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _placasController,
+                            textCapitalization: TextCapitalization.characters,
+                            decoration: const InputDecoration(
+                              hintText: 'Placas (ej: NXZ-4433)',
+                              prefixIcon: Icon(Icons.pin_outlined),
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _polizaController,
+                            decoration: const InputDecoration(
+                              hintText: 'Póliza / Inciso',
+                              prefixIcon: Icon(Icons.article_outlined),
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 6),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
 
@@ -893,8 +934,6 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                                 _municipioController.text = tramo.localidad;
                                 _estadoController.text = tramo.estado;
                                 _referenciasController.text = 'Autopista Arco Norte ${tramo.tramoKilometrico}';
-                                _mapsController.text =
-                                    'https://www.google.com/maps?q=${tramo.latitud},${tramo.longitud}(Arco+Norte+${tramo.localidad})';
                               });
                               Navigator.pop(modalCtx);
                               ScaffoldMessenger.of(this.context).showSnackBar(

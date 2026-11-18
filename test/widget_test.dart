@@ -149,6 +149,60 @@ Voy 8:09 p. m.
       expect(parsed.linkMaps, 'https://maps.app.goo.gl/EGbX4taZmYpqBXS98', reason: 'Debe reconstruir enlace partido por OCR y limpiar timestamp');
       expect(parsed.referencias, contains('mexico pachuca'));
     });
+
+    test('Extrae mensaje operativo real de Inbursa con horas de reporte y asignación, submarca y semoviente', () {
+      const msgInbursa = '''
+Km 164 +200 dir Atlacomulco
+Versa bco
+Esteban Pérez
+Semoviente
+3059330
+22:30 22:32
+''';
+
+      final parsed = WhatsAppParserService.parse(msgInbursa);
+
+      expect(parsed.folio, '3059330');
+      expect(parsed.aseguradora, 'Inbursa', reason: 'Debe deducir Inbursa por formato de folio de 7 dígitos iniciado en 30');
+      expect(parsed.vehiculo, 'Versa', reason: 'Debe detectar la submarca Versa');
+      expect(parsed.colorVehiculo, 'Blanco', reason: 'Debe traducir bco a Blanco');
+      expect(parsed.asegurado, 'Esteban Pérez');
+      expect(parsed.tipoEvento, 'Diverso', reason: 'Semoviente es evento Diverso');
+      expect(parsed.detalleEvento, 'Semoviente');
+      expect(parsed.horaReporte, '22:30');
+      expect(parsed.horaAsignacion, '22:32');
+      expect(parsed.observaciones, contains('22:30'));
+      expect(parsed.observaciones, contains('22:32'));
+      expect(parsed.municipio, 'Tulancingo');
+      expect(parsed.estado, 'Hidalgo');
+      expect(parsed.linkMaps, isNull, reason: 'No debe inventar enlaces de Maps si el texto no traía uno');
+    });
+
+    test('Extrae formato Crabi con Cabinero y enlace de Maps con coordenadas', () {
+      const msgCrabi = '''
+📋 Siniestro #CRA-2026015921
+📍 https://www.google.com/maps?q=19.69520652863495,-98.56009687301638
+👤 Cabinero: Luis Roberto
+
+¿Pueden atender este siniestro?
+El administrador puede postular un ajustador 👇
+''';
+
+      final parsed = WhatsAppParserService.parse(msgCrabi);
+
+      expect(parsed.folio, 'CRA-2026015921');
+      expect(parsed.aseguradora, 'Crabi', reason: 'Debe deducir Crabi por prefijo CRA-');
+      expect(parsed.linkMaps, 'https://www.google.com/maps?q=19.69520652863495,-98.56009687301638');
+      expect(parsed.observaciones, contains('Cabinero: Luis Roberto'));
+      expect(parsed.asegurado, 'Luis Roberto');
+    });
+
+    test('Extrae mensaje que contiene únicamente un link de Maps', () {
+      const msgMaps = 'https://maps.app.goo.gl/EGbX4taZmYpqBXS98';
+      final parsed = WhatsAppParserService.parse(msgMaps);
+
+      expect(parsed.linkMaps, 'https://maps.app.goo.gl/EGbX4taZmYpqBXS98');
+    });
   });
 
   group('LocationResolverService Tests', () {

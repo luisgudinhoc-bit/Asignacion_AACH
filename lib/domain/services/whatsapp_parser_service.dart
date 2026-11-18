@@ -18,6 +18,9 @@ class ParsedCabinaMessage {
   final String? referencias;
   final String? linkMaps;
   final String? tipoEvento;
+  final String? detalleEvento;
+  final String? horaReporte;
+  final String? horaAsignacion;
   final String? observaciones;
   final String rawText;
 
@@ -37,6 +40,9 @@ class ParsedCabinaMessage {
     this.referencias,
     this.linkMaps,
     this.tipoEvento,
+    this.detalleEvento,
+    this.horaReporte,
+    this.horaAsignacion,
     this.observaciones,
     required this.rawText,
   });
@@ -46,8 +52,8 @@ class ParsedCabinaMessage {
       (aseguradora != null && aseguradora!.isNotEmpty) ||
       (ajustador != null && ajustador!.isNotEmpty) ||
       (asegurado != null && asegurado!.isNotEmpty) ||
-      (placas != null && placas!.isNotEmpty) ||
-      (ubicacion != null && ubicacion!.isNotEmpty) ||
+      (vehiculo != null && vehiculo!.isNotEmpty) ||
+      (municipio != null && municipio!.isNotEmpty) ||
       (linkMaps != null && linkMaps!.isNotEmpty) ||
       (referencias != null && referencias!.isNotEmpty);
 }
@@ -61,24 +67,62 @@ class WhatsAppParserService {
       return const ParsedCabinaMessage(rawText: '');
     }
 
-    // Etapa 1: Limpieza profunda de ruido de capturas OCR y chat de WhatsApp
+    // Extracción de horas operativas Inbursa / Cabina antes de limpieza (ej: "22:30 22:32")
+    String? horaReporte;
+    String? horaAsignacion;
+    final inbursaHoursMatch = RegExp(r'\b(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})\b').firstMatch(rawText);
+    if (inbursaHoursMatch != null) {
+      horaReporte = inbursaHoursMatch.group(1);
+      horaAsignacion = inbursaHoursMatch.group(2);
+    }
+
+    // Etapa 1: Limpieza profunda de ruido de capturas y chat de WhatsApp
     final cleanedText = _cleanOcrNoise(rawText);
 
-    // Reconstruir enlaces Maps del texto limpio o del original
+    // Reconstruir enlaces Maps del texto limpio o del original (SOLO si realmente existen en el texto)
     final linkMaps = _extractMapsUrl(cleanedText) ?? _extractMapsUrl(rawText);
-    final aseguradora = _extractAseguradora(cleanedText);
     final folio = _extractFolio(cleanedText);
+    final aseguradora = _extractAseguradora(cleanedText, folio);
     final ajustador = _extractAjustador(cleanedText);
     final telefono = _extractTelefono(cleanedText);
-    final asegurado = _extractAsegurado(cleanedText, ajustador);
     final placas = _extractPlacas(cleanedText);
-    final vehiculo = _extractVehiculo(cleanedText, placas);
-    final color = _extractColor(cleanedText);
+    
+    // Extracción de vehículo y color soportando submarcas populares y abreviaturas ("Versa bco")
+    final vehiculoColor = _extractVehiculoYColor(cleanedText, placas);
+    final vehiculo = vehiculoColor['vehiculo'];
+    final color = vehiculoColor['color'];
+
+    final eventoInfo = _extractTipoEvento(cleanedText);
+    final tipoEvento = eventoInfo['tipo'];
+    final detalleEvento = eventoInfo['detalle'];
+
+    final asegurado = _extractAsegurado(cleanedText, ajustador);
     final poliza = _extractPoliza(cleanedText);
-    final tipoEvento = _extractTipoEvento(cleanedText);
     final referencias = _extractReferencias(cleanedText);
     final ubicacion = _extractUbicacion(cleanedText);
-    final observaciones = _extractObservaciones(cleanedText);
+
+    // Integración de observaciones con Cabinero y horas Inbursa
+    var observaciones = _extractObservaciones(cleanedText);
+    if (horaReporte != null && horaAsignacion != null) {
+      final horasStr = 'Reporte cabina: $horaReporte hrs | Asignación: $horaAsignacion hrs';
+      observaciones = observaciones != null && observaciones.isNotEmpty
+          ? '$observaciones • $horasStr'
+          : horasStr;
+    }
+    if (cleanedText.toLowerCase().contains('cabinero:')) {
+      final cabMatch = RegExp(r'cabinero\s*[:\-]\s*([^\n\r]+)', caseSensitive: false).firstMatch(cleanedText);
+      if (cabMatch != null) {
+        final cabNombre = cabMatch.group(1)?.trim();
+        if (cabNombre != null && cabNombre.isNotEmpty) {
+          final cabStr = 'Cabinero: $cabNombre';
+          if (observaciones == null || !observaciones.contains(cabStr)) {
+            observaciones = observaciones != null && observaciones.isNotEmpty
+                ? '$cabStr • $observaciones'
+                : cabStr;
+          }
+        }
+      }
+    }
 
     // Deducir Municipio y Estado a partir de referencias o ubicación
     final locGeo = _deduceMunicipioEstado(ubicacion ?? referencias ?? '');
@@ -87,8 +131,14 @@ class WhatsAppParserService {
     final arcoMatch = ArcoNorteService.findKmInText('$rawText ${referencias ?? ""} ${ubicacion ?? ""}');
     final municipioFinal = locGeo['municipio'] ?? arcoMatch?.localidad;
     final estadoFinal = locGeo['estado'] ?? arcoMatch?.estado;
-    final linkMapsFinal = linkMaps ?? arcoMatch?.linkGoogleMaps;
-    final referenciasFinal = referencias ?? (arcoMatch != null ? 'Autopista Arco Norte Km ${arcoMatch.kilometro.toStringAsFixed(0)} (${arcoMatch.tramoDescripcion}) CP ${arcoMatch.codigoPostal}' : null);
+
+    // IMPORTANTE: NO inventar enlace de Google Maps si el mensaje original no traía uno
+    final linkMapsFinal = linkMaps;
+
+    final referenciasFinal = referencias ??
+        (arcoMatch != null
+            ? 'Autopista Arco Norte Km ${arcoMatch.kilometro.toStringAsFixed(0)} (${arcoMatch.tramoDescripcion}) CP ${arcoMatch.codigoPostal}'
+            : null);
 
     return ParsedCabinaMessage(
       folio: folio,
@@ -106,6 +156,9 @@ class WhatsAppParserService {
       referencias: referenciasFinal,
       linkMaps: linkMapsFinal,
       tipoEvento: tipoEvento,
+      detalleEvento: detalleEvento,
+      horaReporte: horaReporte,
+      horaAsignacion: horaAsignacion,
       observaciones: observaciones,
       rawText: rawText,
     );
@@ -222,12 +275,12 @@ class WhatsAppParserService {
   }
 
   /// Extrae la Aseguradora normalizada
-  static String? _extractAseguradora(String text) {
+  static String? _extractAseguradora(String text, [String? folio]) {
     final lower = text.toLowerCase();
 
     if (lower.contains('inbursa')) return 'Inbursa';
     if (lower.contains('mapfre')) return 'Mapfre';
-    if (lower.contains('crabi')) return 'Crabi';
+    if (lower.contains('crabi') || lower.contains('cra-') || lower.contains('#cra-')) return 'Crabi';
     if (lower.contains('spt')) return 'SPT Seguros';
     if (lower.contains('otra') || lower.contains('otro')) return 'Otra Compañía';
 
@@ -237,6 +290,13 @@ class WhatsAppParserService {
     if (lower.contains('axa')) return 'AXA Seguros';
     if (lower.contains('hdi')) return 'HDI Seguros';
     if (lower.contains('chubb')) return 'Chubb Seguros';
+
+    // Deducir por folio si no viene el nombre explícito
+    if (folio != null) {
+      if (folio.startsWith('CRA-') || folio.startsWith('CRB')) return 'Crabi';
+      // Folios típicos de Inbursa de 7 dígitos que inician con 30 (ej. 3059330, 3059238, 3059329)
+      if (RegExp(r'^30\d{5}$').hasMatch(folio)) return 'Inbursa';
+    }
 
     return null;
   }
@@ -285,9 +345,9 @@ class WhatsAppParserService {
 
   /// Extrae el Nombre del Asegurado / Reportante
   static String? _extractAsegurado(String text, String? knownAjustador) {
-    // 1. Patrón con etiqueta explícita
+    // 1. Patrón con etiqueta explícita (incluyendo Cabinero)
     final explicitPattern = RegExp(
-      r'(?:asegurado|conductor|cliente|nombre|reportante|contacto)\s*[:\-]\s*([^\n\r,]+)',
+      r'(?:asegurado|conductor|cliente|nombre|reportante|contacto|cabinero)\s*[:\-]\s*([^\n\r,]+)',
       caseSensitive: false,
     );
     final match = explicitPattern.firstMatch(text);
@@ -299,11 +359,10 @@ class WhatsAppParserService {
       }
     }
 
-    // 2. Líneas aisladas que contienen nombres de persona (ej: "Daniel Rojas")
+    // 2. Líneas aisladas que contienen nombres de persona (ej: "Esteban Pérez", "Daniel Rojas")
     final lines = text.split(RegExp(r'[\r\n]+'));
     final candidates = <String>[];
 
-    // Personal operativo y coordinadores que no deben confundirse con el asegurado
     final staffNames = [
       'alejandro chavez',
       'alejandro',
@@ -316,11 +375,25 @@ class WhatsAppParserService {
       'luis',
       'axel',
       'ian',
+      'luis roberto',
+    ];
+
+    final excludeTokens = [
+      'inbursa', 'mapfre', 'crabi', 'seguros', 'qualitas', 'quálitas',
+      'pachuca', 'sahagun', 'sahagún', 'tulancingo', 'atlacomulco',
+      'despacho', 'cabina', 'vas ', 'porfa', 'voy', 'semoviente',
+      'choque', 'robo', 'cristal', 'diverso', 'asistencia', 'siniestro',
+      'folio', 'reporte', 'atender', 'postular', 'administrador',
+      'versa', 'aveo', 'jetta', 'march', 'vento', 'sentra', 'nissan',
+      'chevrolet', 'volkswagen', 'toyota', 'ford', 'honda', 'bco', 'blanco',
+      'negro', 'rojo', 'azul', 'gris', 'plata', 'dir ', 'autopista', 'arco norte',
     ];
 
     for (final line in lines) {
       final trimmed = line.trim();
-      // Descartar si es un enlace, si tiene números, o si es mención con @
+      if (trimmed.isEmpty) continue;
+
+      // Descartar si es un enlace, si tiene números, o si es mención con @ o emoji
       if (trimmed.startsWith('http') || RegExp(r'\d').hasMatch(trimmed) || trimmed.startsWith('@')) {
         continue;
       }
@@ -329,38 +402,26 @@ class WhatsAppParserService {
       }
 
       final lower = trimmed.toLowerCase();
-      if (lower.contains('inbursa') ||
-          lower.contains('mapfre') ||
-          lower.contains('crabi') ||
-          lower.contains('seguros') ||
-          lower.contains('qualitas') ||
-          lower.contains('quálitas') ||
-          lower.contains('pachuca') ||
-          lower.contains('sahagun') ||
-          lower.contains('sahagún') ||
-          lower.contains('despacho') ||
-          lower.contains('cabina') ||
-          lower.startsWith('vas ') ||
-          lower.startsWith('porfa') ||
-          lower == 'voy') {
+      if (excludeTokens.any((w) => lower.contains(w))) {
         continue;
       }
 
-      // Descartar si coincide con el staff del despacho
       final isStaff = staffNames.any((s) => lower == s || lower.startsWith('$s '));
       if (isStaff) {
         continue;
       }
 
-      // Validar formato de nombre propio (2 a 4 palabras capitalizadas, ej: "Daniel Rojas")
-      if (RegExp(r'^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3}$').hasMatch(trimmed)) {
-        candidates.add(trimmed.capitalizeWords());
+      // Validar formato de nombre propio (2 a 4 palabras compuestas únicamente de letras)
+      final words = trimmed.split(RegExp(r'\s+'));
+      if (words.length >= 2 && words.length <= 4) {
+        final allLetters = words.every((w) => RegExp(r'^[A-Za-zÁÉÍÓÚáéíóúñÑüÜ]+$').hasMatch(w));
+        if (allLetters) {
+          candidates.add(trimmed.capitalizeWords());
+        }
       }
     }
 
     if (candidates.isEmpty) return null;
-
-    // Si hay más de un candidato, preferir el que esté más abajo en el chat
     return candidates.last;
   }
 
@@ -434,49 +495,146 @@ class WhatsAppParserService {
     return null;
   }
 
-  /// Extrae Marca, Submarca o Modelo
-  static String? _extractVehiculo(String text, String? placasKnown) {
-    final explicitPattern = RegExp(r'(?:veh[ií]culo|auto|unidad|coche)\s*[:\-]\s*([^\n\r]+)', caseSensitive: false);
-    final match = explicitPattern.firstMatch(text);
-    if (match != null && match.groupCount >= 1) {
-      var val = match.group(1)?.trim() ?? '';
-      if (placasKnown != null && placasKnown.isNotEmpty) {
-        val = val.replaceAll(placasKnown, '');
-      }
+  /// Catálogo de submarcas más comunes en siniestros en México
+  static const List<String> _submarcasMexicanas = [
+    'Versa', 'Aveo', 'Sentra', 'Vento', 'Jetta', 'March', 'Spark', 'Beat',
+    'Rio', 'Forte', 'Onix', 'Swift', 'Hilux', 'NP300', 'Dmax', 'Ranger',
+    'Trax', 'Kicks', 'CR-V', 'CRV', 'HR-V', 'HRV', 'RAV4', 'Seltos',
+    'Ibiza', 'Toledo', 'Taos', 'Tiguan', 'Corolla', 'Yaris', 'Civic',
+    'Lobo', 'Chevy', 'Tsuru', 'Pointer', 'Fit', 'Gol', 'Figo', 'Attitude',
+    'Frontier', 'Altima', 'Camry', 'Prius', 'Tracker', 'Suburban', 'Tahoe',
+    'Ram', 'Stratus', 'Neon', 'Corsa', 'Astra', 'Tiida', 'X-Trail', 'Xtrail',
+    'Creta', 'Tucson', 'Sportage', 'Sorento', 'CX-3', 'CX-5', 'CX-30',
+    'Mazda 2', 'Mazda 3', 'Urvan', 'Hiace', 'Transit', 'Saveiro', 'Tornado',
+    'Captiva', 'Groove', 'Kwid', 'Duster', 'Stepway', 'Sandero', 'Oroch',
+  ];
+
+  /// Diccionario de equivalencias de colores y abreviaturas comunes en cabina
+  static const Map<String, String> _coloresAbreviados = {
+    'bco': 'Blanco',
+    'blco': 'Blanco',
+    'blanco': 'Blanco',
+    'white': 'Blanco',
+    'neg': 'Negro',
+    'ngro': 'Negro',
+    'negro': 'Negro',
+    'black': 'Negro',
+    'grs': 'Gris',
+    'gris': 'Gris',
+    'gray': 'Gris',
+    'grey': 'Gris',
+    'oxford': 'Gris Oxford',
+    'plta': 'Plata',
+    'pte': 'Plata',
+    'plata': 'Plata',
+    'silver': 'Plata',
+    'rjo': 'Rojo',
+    'rojo': 'Rojo',
+    'red': 'Rojo',
+    'guinda': 'Rojo Guinda',
+    'azl': 'Azul',
+    'azul': 'Azul',
+    'blue': 'Azul',
+    'marino': 'Azul Marino',
+    'vino': 'Vino',
+    'tinto': 'Vino',
+    'dorado': 'Dorado',
+    'oro': 'Dorado',
+    'gold': 'Dorado',
+    'arena': 'Arena',
+    'beige': 'Arena',
+    'café': 'Café',
+    'cafe': 'Café',
+    'verde': 'Verde',
+    'amarillo': 'Amarillo',
+    'naranja': 'Naranja',
+  };
+
+  /// Extrae conjuntamente Marca / Submarca y Color del vehículo tolerando "Versa bco", abreviaturas y modelos sin marca
+  static Map<String, String?> _extractVehiculoYColor(String text, String? placasKnown) {
+    String? vehiculo;
+    String? color;
+
+    // 1. Revisión explícita con etiqueta
+    final explicitVeh = RegExp(r'(?:veh[ií]culo|auto|unidad|coche)\s*[:\-]\s*([^\n\r]+)', caseSensitive: false);
+    final matchVeh = explicitVeh.firstMatch(text);
+    if (matchVeh != null && matchVeh.groupCount >= 1) {
+      var val = matchVeh.group(1)?.trim() ?? '';
+      if (placasKnown != null && placasKnown.isNotEmpty) val = val.replaceAll(placasKnown, '');
       val = val.split(RegExp(r'\b(placa[s]?|color|ubi|poliza)\b', caseSensitive: false)).first;
       if (val.trim().isNotEmpty) {
-        return val.trim().capitalizeWords();
+        vehiculo = val.trim().capitalizeWords();
       }
     }
 
-    final marcas = [
-      'Nissan', 'Chevrolet', 'Volkswagen', 'VW', 'Toyota', 'Honda', 'Ford',
-      'Mazda', 'Kia', 'Hyundai', 'Seat', 'Renault', 'Suzuki', 'BMW'
-    ];
-    for (final m in marcas) {
-      final reg = RegExp('\\b($m\\s+[A-Za-z0-9]+(?:\\s+\\d{4})?)', caseSensitive: false);
-      final mMatch = reg.firstMatch(text);
-      if (mMatch != null) {
-        return mMatch.group(1)?.trim().capitalizeWords();
-      }
+    final explicitCol = RegExp(r'(?:color)\s*[:\-]?\s*([A-Za-zÁÉÍÓÚáéíóú]+)', caseSensitive: false);
+    final matchCol = explicitCol.firstMatch(text);
+    if (matchCol != null && matchCol.groupCount >= 1) {
+      final rawCol = matchCol.group(1)?.trim().toLowerCase() ?? '';
+      color = _coloresAbreviados[rawCol] ?? rawCol.capitalizeWords();
     }
-    return null;
-  }
 
-  /// Extrae el Color
-  static String? _extractColor(String text) {
-    final pattern = RegExp(r'(?:color)\s*[:\-]?\s*([A-Za-zÁÉÍÓÚáéíóú]+)', caseSensitive: false);
-    final match = pattern.firstMatch(text);
-    if (match != null && match.groupCount >= 1) {
-      return match.group(1)?.trim().capitalizeWords();
+    // 2. Búsqueda línea por línea (ej: "Versa bco", "Jetta negro", "Aveo gris 2020")
+    final lines = text.split(RegExp(r'[\r\n]+'));
+    for (final line in lines) {
+      final cleanLine = line.trim();
+      if (cleanLine.isEmpty) continue;
+      final lower = cleanLine.toLowerCase();
+
+      // Verificar si la línea contiene alguna de las submarcas mexicanas
+      for (final sub in _submarcasMexicanas) {
+        if (RegExp('\\b${RegExp.escape(sub.toLowerCase())}\\b').hasMatch(lower)) {
+          vehiculo ??= sub;
+
+          // Extraer año si viene junto (ej: "Versa 2021")
+          final yearMatch = RegExp(r'\b(20\d{2}|19\d{2})\b').firstMatch(cleanLine);
+          if (yearMatch != null) {
+            vehiculo = '$vehiculo ${yearMatch.group(1)}';
+          }
+
+          // Extraer color de la misma línea (ej: "bco", "neg", "rojo")
+          if (color == null) {
+            for (final entry in _coloresAbreviados.entries) {
+              if (RegExp('\\b${RegExp.escape(entry.key)}\\b').hasMatch(lower)) {
+                color = entry.value;
+                break;
+              }
+            }
+          }
+          break;
+        }
+      }
+      if (vehiculo != null) break;
     }
-    final colores = ['Blanco', 'Negro', 'Gris', 'Plata', 'Rojo', 'Azul', 'Vino', 'Arena', 'Verde'];
-    for (final col in colores) {
-      if (RegExp('\\b$col\\b', caseSensitive: false).hasMatch(text)) {
-        return col;
+
+    // 3. Fallback marcas globales clásicas ("Nissan Versa", "Toyota Corolla", "BMW")
+    if (vehiculo == null) {
+      final marcas = [
+        'Nissan', 'Chevrolet', 'Volkswagen', 'VW', 'Toyota', 'Honda', 'Ford',
+        'Mazda', 'Kia', 'Hyundai', 'Seat', 'Renault', 'Suzuki', 'BMW', 'Mercedes'
+      ];
+      for (final m in marcas) {
+        final reg = RegExp('\\b($m(?:\\s+[A-Za-z0-9]+)?(?:\\s+\\d{4})?)', caseSensitive: false);
+        final mMatch = reg.firstMatch(text);
+        if (mMatch != null) {
+          vehiculo = mMatch.group(1)?.trim().capitalizeWords();
+          break;
+        }
       }
     }
-    return null;
+
+    // 4. Si el color aún no se encuentra, buscar en todo el texto
+    if (color == null) {
+      final lowerFull = text.toLowerCase();
+      for (final entry in _coloresAbreviados.entries) {
+        if (RegExp('\\b${RegExp.escape(entry.key)}\\b').hasMatch(lowerFull)) {
+          color = entry.value;
+          break;
+        }
+      }
+    }
+
+    return {'vehiculo': vehiculo, 'color': color};
   }
 
   /// Extrae Póliza
@@ -558,15 +716,69 @@ class WhatsAppParserService {
     return {'municipio': municipio, 'estado': estado};
   }
 
-  /// Extrae Tipo de Evento
-  static String? _extractTipoEvento(String text) {
+  /// Extrae Tipo de Evento (Choque, Robo, Cristal, Diverso, Otro) y detalle específico (ej: Semoviente)
+  static Map<String, String> _extractTipoEvento(String text) {
     final lower = text.toLowerCase();
-    if (lower.contains('choque') || lower.contains('colision') || lower.contains('alcance')) return 'Choque';
-    if (lower.contains('robo')) return 'Robo';
-    if (lower.contains('cristal')) return 'Cristal';
-    if (lower.contains('asistencia') || lower.contains('grua') || lower.contains('grúa') || lower.contains('bateria') || lower.contains('gasolina')) return 'Asistencia Vial';
-    if (lower.contains('tercero')) return 'Daños a Terceros';
-    return null;
+
+    // Eventos Diversos en Carretera / Autopista (Semoviente, animales, baches, desastres)
+    if (lower.contains('semoviente') ||
+        lower.contains('animal') ||
+        lower.contains('vaca') ||
+        lower.contains('caballo') ||
+        lower.contains('perro') ||
+        lower.contains('bache') ||
+        lower.contains('arbol') ||
+        lower.contains('árbol') ||
+        lower.contains('derrape') ||
+        lower.contains('piedra') ||
+        lower.contains('inundaci') ||
+        lower.contains('vandalismo') ||
+        lower.contains('granizo') ||
+        lower.contains('rayo') ||
+        lower.contains('asistencia') ||
+        lower.contains('grua') ||
+        lower.contains('grúa') ||
+        lower.contains('bateria') ||
+        lower.contains('gasolina')) {
+      String detalle = 'Diverso';
+      if (lower.contains('semoviente')) {
+        detalle = 'Semoviente';
+      } else if (lower.contains('animal') || lower.contains('vaca') || lower.contains('caballo')) {
+        detalle = 'Impacto Semoviente';
+      } else if (lower.contains('bache')) {
+        detalle = 'Caída en Bache';
+      } else if (lower.contains('arbol') || lower.contains('árbol')) {
+        detalle = 'Caída de Árbol';
+      } else if (lower.contains('derrape')) {
+        detalle = 'Derrape';
+      } else if (lower.contains('asistencia') || lower.contains('grua') || lower.contains('grúa')) {
+        detalle = 'Asistencia Vial';
+      }
+      return {'tipo': 'Diverso', 'detalle': detalle};
+    }
+
+    if (lower.contains('choque') ||
+        lower.contains('colision') ||
+        lower.contains('colisión') ||
+        lower.contains('alcance') ||
+        lower.contains('volcadura') ||
+        lower.contains('impacto')) {
+      return {'tipo': 'Choque', 'detalle': 'Choque'};
+    }
+
+    if (lower.contains('robo') || lower.contains('asalto') || lower.contains('despojo')) {
+      return {'tipo': 'Robo', 'detalle': 'Robo'};
+    }
+
+    if (lower.contains('cristal') ||
+        lower.contains('parabrisas') ||
+        lower.contains('medallon') ||
+        lower.contains('medallón') ||
+        lower.contains('vidrio')) {
+      return {'tipo': 'Cristal', 'detalle': 'Cristal'};
+    }
+
+    return {'tipo': 'Choque', 'detalle': ''};
   }
 
   /// Extrae Observaciones adicionales
