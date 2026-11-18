@@ -43,6 +43,13 @@ class AjustadorNotifier extends StateNotifier<List<AjustadorModel>> {
     await LocalStorageService.deleteAjustador(id);
     loadAjustadores();
   }
+
+  Future<void> restoreDefaults() async {
+    for (final aj in AjustadorModel.defaultAjustadores) {
+      await LocalStorageService.saveAjustador(aj);
+    }
+    loadAjustadores();
+  }
 }
 
 final ajustadoresProvider =

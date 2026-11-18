@@ -35,12 +35,17 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
   final _colorController = TextEditingController();
   final _placasController = TextEditingController();
   final _polizaController = TextEditingController();
-  final _ubicacionController = TextEditingController();
+
+  // Ubicación estructurada: Municipio, Estado, Referencias y Maps opcional
+  final _municipioController = TextEditingController();
+  final _estadoController = TextEditingController();
+  final _referenciasController = TextEditingController();
   final _mapsController = TextEditingController();
+
   final _observacionesController = TextEditingController();
 
   // Estados de selección rápida (Chips)
-  String _selectedAseguradora = 'Quálitas';
+  String _selectedAseguradora = 'Inbursa';
   String _selectedTipoEvento = 'Choque';
   String? _selectedAjustadorId;
   String _selectedAjustadorNombre = '';
@@ -53,7 +58,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ajustadores = ref.read(activeAjustadoresProvider);
-      if (ajustadores.isNotEmpty) {
+      if (ajustadores.isNotEmpty && _selectedAjustadorNombre.isEmpty) {
         setState(() {
           _selectedAjustadorId = ajustadores.first.id;
           _selectedAjustadorNombre = ajustadores.first.nombre;
@@ -72,7 +77,9 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     _colorController.dispose();
     _placasController.dispose();
     _polizaController.dispose();
-    _ubicacionController.dispose();
+    _municipioController.dispose();
+    _estadoController.dispose();
+    _referenciasController.dispose();
     _mapsController.dispose();
     _observacionesController.dispose();
     super.dispose();
@@ -104,9 +111,20 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
       if (parsed.poliza != null && parsed.poliza!.isNotEmpty) {
         _polizaController.text = parsed.poliza!;
       }
-      if (parsed.ubicacion != null && parsed.ubicacion!.isNotEmpty) {
-        _ubicacionController.text = parsed.ubicacion!;
+
+      // Ubicación
+      if (parsed.municipio != null && parsed.municipio!.isNotEmpty) {
+        _municipioController.text = parsed.municipio!;
       }
+      if (parsed.estado != null && parsed.estado!.isNotEmpty) {
+        _estadoController.text = parsed.estado!;
+      }
+      if (parsed.referencias != null && parsed.referencias!.isNotEmpty) {
+        _referenciasController.text = parsed.referencias!;
+      } else if (parsed.ubicacion != null && parsed.ubicacion!.isNotEmpty) {
+        _referenciasController.text = parsed.ubicacion!;
+      }
+
       if (parsed.linkMaps != null && parsed.linkMaps!.isNotEmpty) {
         _mapsController.text = parsed.linkMaps!;
       }
@@ -115,6 +133,19 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
       }
       if (parsed.observaciones != null && parsed.observaciones!.isNotEmpty) {
         _observacionesController.text = parsed.observaciones!;
+      }
+
+      // Ajustador detectado por mención en WhatsApp
+      if (parsed.ajustador != null && parsed.ajustador!.isNotEmpty) {
+        final ajustadores = ref.read(activeAjustadoresProvider);
+        final match = ajustadores.firstWhere(
+          (a) => a.nombre.toLowerCase().contains(parsed.ajustador!.toLowerCase()) ||
+              parsed.ajustador!.toLowerCase().contains(a.nombre.toLowerCase()),
+          orElse: () => ajustadores.first,
+        );
+        _selectedAjustadorId = match.id;
+        _selectedAjustadorNombre = match.nombre;
+        _selectedAjustadorTelefono = match.telefonoWhatsApp;
       }
     });
   }
@@ -134,8 +165,8 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
       final loc = await LocationService.getCurrentLocation();
       if (loc != null) {
         setState(() {
-          if (_ubicacionController.text.isEmpty) {
-            _ubicacionController.text = loc.displayText;
+          if (_referenciasController.text.isEmpty) {
+            _referenciasController.text = loc.displayText;
           }
           _mapsController.text = loc.mapsUrl;
         });
@@ -187,7 +218,10 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
       ajustador: _selectedAjustadorNombre,
       estatus: SiniestroEstatus.asignado,
       tipoEvento: _selectedTipoEvento,
-      ubicacion: _ubicacionController.text.trim(),
+      municipio: _municipioController.text.trim(),
+      estado: _estadoController.text.trim(),
+      referencias: _referenciasController.text.trim(),
+      ubicacion: _referenciasController.text.trim(),
       linkMaps: _mapsController.text.trim(),
       asegurado: _aseguradoController.text.trim(),
       telefonoAsegurado: _telefonoController.text.trim(),
@@ -212,7 +246,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
         placas: nuevoSiniestro.placas,
         asegurado: nuevoSiniestro.asegurado,
         telefonoAsegurado: nuevoSiniestro.telefonoAsegurado,
-        ubicacion: nuevoSiniestro.ubicacion,
+        ubicacion: nuevoSiniestro.direccionCompleta,
         linkMaps: nuevoSiniestro.linkMaps,
         observaciones: nuevoSiniestro.observaciones,
         fechaHora: now,
@@ -248,11 +282,14 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     _colorController.clear();
     _placasController.clear();
     _polizaController.clear();
-    _ubicacionController.clear();
+    _municipioController.clear();
+    _estadoController.clear();
+    _referenciasController.clear();
     _mapsController.clear();
     _observacionesController.clear();
     setState(() {
       _selectedTipoEvento = 'Choque';
+      _selectedAseguradora = 'Inbursa';
     });
   }
 
@@ -280,10 +317,10 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
             children: [
-              // 1. Parser Inteligente de Cabina
+              // 1. Parser Inteligente de Cabina y Reenvíos WhatsApp
               CabinaParserCard(onApplyParsed: _applyParsedData),
 
-              // 2. Selector Rápido de Aseguradora
+              // 2. Selector Rápido de Aseguradora (Inbursa, Mapfre, Crabi, SPT, Otra Compañía)
               _buildSectionTitle('1. Aseguradora'),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -292,14 +329,14 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                     final isSelected = _selectedAseguradora == cia;
                     final ciaColor = AppColors.getAseguradoraColor(cia);
                     return Padding(
-                      padding: const EdgeInsets.only(right: 6.0),
+                      padding: const EdgeInsets.only(right: 8.0),
                       child: ChoiceChip(
                         label: Text(cia),
                         selected: isSelected,
                         selectedColor: ciaColor.withValues(alpha: 0.2),
                         side: BorderSide(
                           color: isSelected ? ciaColor : Colors.grey.shade400,
-                          width: isSelected ? 1.5 : 1.0,
+                          width: isSelected ? 2.0 : 1.0,
                         ),
                         labelStyle: TextStyle(
                           color: isSelected ? ciaColor : theme.textTheme.bodyMedium?.color,
@@ -322,7 +359,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                 controller: _folioController,
                 textCapitalization: TextCapitalization.characters,
                 decoration: InputDecoration(
-                  hintText: 'Ej. 0424987654 / GNP-123456',
+                  hintText: 'Ej. 3059238 / INB-998877',
                   prefixIcon: const Icon(Icons.confirmation_number_outlined),
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.content_paste_go_rounded, color: AppColors.primaryLight),
@@ -361,7 +398,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                               style: const TextStyle(fontSize: 11, color: Colors.white),
                             ),
                           ),
-                          label: Text('${aj.nombre} (${aj.telefonoWhatsApp})'),
+                          label: Text(aj.nombre),
                           selected: isSelected,
                           onSelected: (val) {
                             if (val) {
@@ -377,8 +414,67 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                     ),
               const SizedBox(height: 16),
 
-              // 5. Tipo de Evento (ChoiceChips)
-              _buildSectionTitle('4. Tipo de Evento'),
+              // 5. Ubicación y Referencias (Municipio, Estado, Referencias, Maps opcional)
+              _buildSectionTitle('4. Ubicación y Referencias'),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 1,
+                    child: TextFormField(
+                      controller: _municipioController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        hintText: 'Municipio (ej: Pachuca)',
+                        prefixIcon: Icon(Icons.location_city_outlined),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 1,
+                    child: TextFormField(
+                      controller: _estadoController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        hintText: 'Estado (ej: Hidalgo)',
+                        prefixIcon: Icon(Icons.map_outlined),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _referenciasController,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  hintText: 'Referencias: calle, carretera, autopista, cerradas, km...',
+                  prefixIcon: const Icon(Icons.directions_outlined),
+                  suffixIcon: IconButton(
+                    icon: _isGettingGps
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.my_location_rounded, color: AppColors.primaryLight),
+                    tooltip: 'Insertar GPS actual',
+                    onPressed: _isGettingGps ? null : _fetchCurrentGps,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _mapsController,
+                decoration: const InputDecoration(
+                  hintText: 'Enlace Google Maps (Opcional - https://maps.app.goo.gl/...)',
+                  prefixIcon: Icon(Icons.pin_drop_outlined),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // 6. Tipo de Evento (ChoiceChips)
+              _buildSectionTitle('5. Tipo de Evento'),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -395,37 +491,6 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                       ),
                     );
                   }).toList(),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 6. Ubicación y GPS
-              _buildSectionTitle('5. Ubicación y Referencias'),
-              TextFormField(
-                controller: _ubicacionController,
-                maxLines: 2,
-                decoration: InputDecoration(
-                  hintText: 'Calle, número, colonia, municipio o referencias...',
-                  prefixIcon: const Icon(Icons.location_on_outlined),
-                  suffixIcon: IconButton(
-                    icon: _isGettingGps
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.my_location_rounded, color: AppColors.primaryLight),
-                    tooltip: 'Tomar GPS actual',
-                    onPressed: _isGettingGps ? null : _fetchCurrentGps,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _mapsController,
-                decoration: const InputDecoration(
-                  hintText: 'Enlace Google Maps (opcional)',
-                  prefixIcon: Icon(Icons.map_outlined),
                 ),
               ),
               const SizedBox(height: 16),
@@ -483,13 +548,13 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               ),
               const SizedBox(height: 16),
 
-              // 8. Datos del Asegurado / Contacto
+              // 8. Datos del Asegurado / Reportante
               _buildSectionTitle('7. Asegurado / Reportante'),
               TextFormField(
                 controller: _aseguradoController,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
-                  hintText: 'Nombre completo del asegurado o conductor',
+                  hintText: 'Nombre completo (ej: Daniel Rojas)',
                   prefixIcon: Icon(Icons.person_outline_rounded),
                 ),
               ),
@@ -504,13 +569,13 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               ),
               const SizedBox(height: 16),
 
-              // 9. Observaciones
+              // 9. Observaciones Adicionales
               _buildSectionTitle('8. Observaciones Adicionales'),
               TextFormField(
                 controller: _observacionesController,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  hintText: 'Detalles reportados por cabina, lesionados, etc.',
+                  hintText: 'Notas de cabina, lesionados, vialidades cerradas...',
                   prefixIcon: Icon(Icons.notes_rounded),
                 ),
               ),

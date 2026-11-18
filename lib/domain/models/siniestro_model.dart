@@ -36,6 +36,9 @@ class SiniestroModel {
   final String ajustador;
   final SiniestroEstatus estatus;
   final String tipoEvento;
+  final String municipio;
+  final String estado;
+  final String referencias;
   final String ubicacion;
   final String linkMaps;
   final String asegurado;
@@ -60,6 +63,9 @@ class SiniestroModel {
     required this.ajustador,
     this.estatus = SiniestroEstatus.asignado,
     this.tipoEvento = 'Choque',
+    this.municipio = '',
+    this.estado = '',
+    this.referencias = '',
     this.ubicacion = '',
     this.linkMaps = '',
     this.asegurado = '',
@@ -80,6 +86,16 @@ class SiniestroModel {
         fechaAsignacion = fechaAsignacion ?? DateTime.now(),
         ultimaActualizacion = ultimaActualizacion ?? DateTime.now();
 
+  /// Dirección consolidada para mostrar en tarjetas y ficha
+  String get direccionCompleta {
+    final partes = <String>[];
+    if (municipio.isNotEmpty) partes.add(municipio);
+    if (estado.isNotEmpty) partes.add(estado);
+    if (referencias.isNotEmpty) partes.add(referencias);
+    if (partes.isEmpty) return ubicacion;
+    return partes.join(', ');
+  }
+
   /// Copia el modelo con modificaciones
   SiniestroModel copyWith({
     String? id,
@@ -88,6 +104,9 @@ class SiniestroModel {
     String? ajustador,
     SiniestroEstatus? estatus,
     String? tipoEvento,
+    String? municipio,
+    String? estado,
+    String? referencias,
     String? ubicacion,
     String? linkMaps,
     String? asegurado,
@@ -112,6 +131,9 @@ class SiniestroModel {
       ajustador: ajustador ?? this.ajustador,
       estatus: estatus ?? this.estatus,
       tipoEvento: tipoEvento ?? this.tipoEvento,
+      municipio: municipio ?? this.municipio,
+      estado: estado ?? this.estado,
+      referencias: referencias ?? this.referencias,
       ubicacion: ubicacion ?? this.ubicacion,
       linkMaps: linkMaps ?? this.linkMaps,
       asegurado: asegurado ?? this.asegurado,
@@ -140,6 +162,9 @@ class SiniestroModel {
       'ajustador': ajustador,
       'estatus': estatus.name,
       'tipoEvento': tipoEvento,
+      'municipio': municipio,
+      'estado': estado,
+      'referencias': referencias,
       'ubicacion': ubicacion,
       'linkMaps': linkMaps,
       'asegurado': asegurado,
@@ -164,13 +189,16 @@ class SiniestroModel {
     return SiniestroModel(
       id: map['id'] as String? ?? const Uuid().v4(),
       folio: map['folio'] as String? ?? '',
-      aseguradora: map['aseguradora'] as String? ?? 'Quálitas',
+      aseguradora: map['aseguradora'] as String? ?? 'Inbursa',
       ajustador: map['ajustador'] as String? ?? '',
       estatus: SiniestroEstatus.values.firstWhere(
         (e) => e.name == map['estatus'],
         orElse: () => SiniestroEstatus.fromString(map['estatus'] as String?),
       ),
       tipoEvento: map['tipoEvento'] as String? ?? 'Choque',
+      municipio: map['municipio'] as String? ?? '',
+      estado: map['estado'] as String? ?? '',
+      referencias: map['referencias'] as String? ?? '',
       ubicacion: map['ubicacion'] as String? ?? '',
       linkMaps: map['linkMaps'] as String? ?? '',
       asegurado: map['asegurado'] as String? ?? '',
@@ -207,7 +235,7 @@ class SiniestroModel {
       ajustador,
       estatus.displayName,
       tipoEvento,
-      ubicacion,
+      direccionCompleta,
       linkMaps,
       asegurado,
       telefonoAsegurado,
@@ -232,7 +260,7 @@ class SiniestroModel {
     return SiniestroModel(
       id: getCol(0).isNotEmpty ? getCol(0) : const Uuid().v4(),
       folio: getCol(1),
-      aseguradora: getCol(2).isNotEmpty ? getCol(2) : 'Quálitas',
+      aseguradora: getCol(2).isNotEmpty ? getCol(2) : 'Inbursa',
       ajustador: getCol(3),
       estatus: SiniestroEstatus.fromString(getCol(4)),
       tipoEvento: getCol(5).isNotEmpty ? getCol(5) : 'Choque',

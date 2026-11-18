@@ -3,27 +3,20 @@ class AppConstants {
   static const String appName = 'Asignación AACH';
   static const String appVersion = '1.0.0';
   static const String defaultSpreadsheetTitle = 'CONTROL_OPERATIVO_AACH_2026';
-  
+
   // Hive Boxes
   static const String siniestrosBox = 'siniestros_box_v1';
   static const String ajustadoresBox = 'ajustadores_box_v1';
   static const String syncQueueBox = 'sync_queue_box_v1';
   static const String appSettingsBox = 'app_settings_box_v1';
 
-  // Catálogo inicial de Aseguradoras operadas por el despacho en México
+  // Catálogo oficial de Aseguradoras del Despacho AACH
   static const List<String> defaultAseguradoras = [
-    'Quálitas',
-    'GNP Seguros',
     'Inbursa',
-    'AXA Seguros',
-    'HDI Seguros',
-    'Chubb Seguros',
     'Mapfre',
-    'Afirme',
-    'Banorte',
-    'Atlas',
-    'Zurich',
-    'Otro',
+    'Crabi',
+    'SPT Seguros',
+    'Otra Compañía',
   ];
 
   // Tipos de Eventos / Siniestros

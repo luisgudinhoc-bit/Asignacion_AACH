@@ -39,29 +39,36 @@ class AppColors {
   /// Obtiene un color identificador distintivo para cada aseguradora
   static Color getAseguradoraColor(String aseguradora) {
     switch (aseguradora.toLowerCase()) {
-      case 'quálitas':
-      case 'qualitas':
-        return const Color(0xFF8B5CF6); // Púrpura Quálitas
-      case 'gnp seguros':
-      case 'gnp':
-        return const Color(0xFFEA580C); // Naranja GNP
       case 'inbursa':
         return const Color(0xFFDC2626); // Rojo Inbursa
-      case 'axa seguros':
-      case 'axa':
-        return const Color(0xFF0284C7); // Azul Marino AXA
-      case 'hdi seguros':
-      case 'hdi':
-        return const Color(0xFF16A34A); // Verde HDI
-      case 'chubb seguros':
-      case 'chubb':
-        return const Color(0xFF0F766E); // Teal Chubb
       case 'mapfre':
         return const Color(0xFFB91C1C); // Guinda Mapfre
-      case 'banorte':
-        return const Color(0xFFC026D3); // Magenta Banorte
+      case 'crabi':
+        return const Color(0xFF7C3AED); // Púrpura / Violeta Crabi
+      case 'spt seguros':
+      case 'spt':
+        return const Color(0xFF0D9488); // Teal SPT
+      case 'otra compañía':
+      case 'otra compania':
+      case 'otro':
+        return const Color(0xFF64748B); // Gris operativo
+      case 'quálitas':
+      case 'qualitas':
+        return const Color(0xFF8B5CF6);
+      case 'gnp seguros':
+      case 'gnp':
+        return const Color(0xFFEA580C);
+      case 'axa seguros':
+      case 'axa':
+        return const Color(0xFF0284C7);
+      case 'hdi seguros':
+      case 'hdi':
+        return const Color(0xFF16A34A);
+      case 'chubb seguros':
+      case 'chubb':
+        return const Color(0xFF0F766E);
       default:
-        return const Color(0xFF475569); // Gris neutro
+        return const Color(0xFF475569);
     }
   }
 }

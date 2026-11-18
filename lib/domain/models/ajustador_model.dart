@@ -77,23 +77,38 @@ class AjustadorModel {
   /// Lista predeterminada de ajustadores del despacho AACH
   static List<AjustadorModel> get defaultAjustadores => [
         AjustadorModel(
-          nombre: 'Axel',
+          nombre: 'Sergio Sanchez',
           telefonoWhatsApp: '5511223344',
           activo: true,
         ),
         AjustadorModel(
-          nombre: 'Alejandro',
+          nombre: 'Andres Gudiño',
           telefonoWhatsApp: '5522334455',
           activo: true,
         ),
         AjustadorModel(
-          nombre: 'Ian',
+          nombre: 'Alejandro Chavez',
           telefonoWhatsApp: '5533445566',
           activo: true,
         ),
         AjustadorModel(
-          nombre: 'Luis',
+          nombre: 'Armando',
           telefonoWhatsApp: '5544556677',
+          activo: true,
+        ),
+        AjustadorModel(
+          nombre: 'Luis',
+          telefonoWhatsApp: '5555667788',
+          activo: true,
+        ),
+        AjustadorModel(
+          nombre: 'Axel',
+          telefonoWhatsApp: '5566778899',
+          activo: true,
+        ),
+        AjustadorModel(
+          nombre: 'Ian',
+          telefonoWhatsApp: '5577889900',
           activo: true,
         ),
       ];

@@ -100,19 +100,26 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
             TextField(
               controller: nombreCtrl,
               textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(labelText: 'Nombre'),
+              decoration: const InputDecoration(
+                labelText: 'Nombre Completo',
+                prefixIcon: Icon(Icons.person_outline),
+              ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             TextField(
               controller: telCtrl,
               keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Teléfono WhatsApp (10 dígitos)'),
+              decoration: const InputDecoration(
+                labelText: 'Teléfono WhatsApp (10 dígitos)',
+                prefixIcon: Icon(Icons.phone_outlined),
+              ),
             ),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          ElevatedButton(
+          ElevatedButton.icon(
+            icon: const Icon(Icons.save_rounded, size: 16),
             onPressed: () {
               if (nombreCtrl.text.trim().isNotEmpty && telCtrl.text.trim().isNotEmpty) {
                 ref.read(ajustadoresProvider.notifier).addAjustador(
@@ -120,9 +127,129 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
                       telefonoWhatsApp: telCtrl.text.trim(),
                     );
                 Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Ajustador ${nombreCtrl.text.trim()} agregado con éxito.'),
+                    backgroundColor: AppColors.statusConcluido,
+                  ),
+                );
               }
             },
-            child: const Text('Guardar'),
+            label: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditAjustadorDialog(dynamic ajustador) {
+    final nombreCtrl = TextEditingController(text: ajustador.nombre);
+    final telCtrl = TextEditingController(text: ajustador.telefonoWhatsApp);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Editar Ajustador: ${ajustador.nombre}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nombreCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Nombre Completo',
+                prefixIcon: Icon(Icons.person_outline),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: telCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Teléfono WhatsApp (10 dígitos)',
+                prefixIcon: Icon(Icons.phone_outlined),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.check_rounded, size: 16),
+            onPressed: () {
+              if (nombreCtrl.text.trim().isNotEmpty && telCtrl.text.trim().isNotEmpty) {
+                final actualizado = ajustador.copyWith(
+                  nombre: nombreCtrl.text.trim(),
+                  telefonoWhatsApp: telCtrl.text.trim(),
+                );
+                ref.read(ajustadoresProvider.notifier).updateAjustador(actualizado);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Ajustador ${actualizado.nombre} actualizado.'),
+                    backgroundColor: AppColors.statusConcluido,
+                  ),
+                );
+              }
+            },
+            label: const Text('Actualizar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteAjustador(dynamic ajustador) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Eliminar Ajustador?'),
+        content: Text(
+          'Se eliminará a "${ajustador.nombre}" del catálogo de ajustadores locales.\n\nEsta acción no afectará los siniestros ya registrados.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.statusCancelado),
+            onPressed: () {
+              ref.read(ajustadoresProvider.notifier).deleteAjustador(ajustador.id);
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Ajustador ${ajustador.nombre} eliminado.'),
+                  backgroundColor: AppColors.statusCancelado,
+                ),
+              );
+            },
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmRestoreDefaults() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restablecer Ajustadores'),
+        content: const Text(
+          'Se cargarán los ajustadores iniciales del despacho (Sergio Sanchez, Andres Gudiño, Alejandro Chavez, Armando, Luis, Axel, Ian).\n\n¿Desea continuar?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () {
+              ref.read(ajustadoresProvider.notifier).restoreDefaults();
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Catálogo de ajustadores restablecido a los valores predeterminados.'),
+                  backgroundColor: AppColors.statusConcluido,
+                ),
+              );
+            },
+            child: const Text('Restablecer'),
           ),
         ],
       ),
@@ -264,11 +391,20 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildSectionHeader('3. Catálogo de Ajustadores'),
-              TextButton.icon(
-                onPressed: _showAddAjustadorDialog,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Agregar'),
+              _buildSectionHeader('3. Catálogo de Ajustadores (${ajustadores.length})'),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Restablecer ajustadores iniciales',
+                    icon: const Icon(Icons.restore_rounded, size: 20),
+                    onPressed: _confirmRestoreDefaults,
+                  ),
+                  TextButton.icon(
+                    onPressed: _showAddAjustadorDialog,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Agregar'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -278,31 +414,100 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
               borderRadius: BorderRadius.circular(14),
               side: const BorderSide(color: AppColors.borderLight),
             ),
-            child: Column(
-              children: ajustadores.map((aj) {
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: aj.activo
-                        ? AppColors.primaryLight.withValues(alpha: 0.2)
-                        : Colors.grey.shade300,
-                    child: Text(
-                      aj.nombre[0].toUpperCase(),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: aj.activo ? AppColors.primaryLight : Colors.grey,
+            child: ajustadores.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          const Icon(Icons.people_outline, size: 40, color: Colors.grey),
+                          const SizedBox(height: 8),
+                          const Text('No hay ajustadores registrados.'),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _confirmRestoreDefaults,
+                            icon: const Icon(Icons.restore_rounded, size: 16),
+                            label: const Text('Cargar Ajustadores Iniciales'),
+                          ),
+                        ],
                       ),
                     ),
+                  )
+                : Column(
+                    children: [
+                      for (int i = 0; i < ajustadores.length; i++) ...[
+                        if (i > 0) const Divider(height: 1, indent: 64),
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                          leading: CircleAvatar(
+                            backgroundColor: ajustadores[i].activo
+                                ? AppColors.primaryLight.withValues(alpha: 0.15)
+                                : Colors.grey.shade300,
+                            child: Text(
+                              ajustadores[i].nombre.isNotEmpty ? ajustadores[i].nombre[0].toUpperCase() : '?',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: ajustadores[i].activo ? AppColors.primaryLight : Colors.grey,
+                              ),
+                            ),
+                          ),
+                          title: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  ajustadores[i].nombre,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: ajustadores[i].activo ? null : Colors.grey,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (!ajustadores[i].activo) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade200,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'Inactivo',
+                                    style: TextStyle(fontSize: 10, color: Colors.grey),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          subtitle: Text(
+                            '📱 ${ajustadores[i].telefonoWhatsApp}',
+                            style: TextStyle(fontSize: 12, color: theme.hintColor),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                                tooltip: 'Editar datos',
+                                onPressed: () => _showEditAjustadorDialog(ajustadores[i]),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.statusCancelado),
+                                tooltip: 'Eliminar ajustador',
+                                onPressed: () => _confirmDeleteAjustador(ajustadores[i]),
+                              ),
+                              Switch(
+                                value: ajustadores[i].activo,
+                                activeThumbColor: AppColors.statusConcluido,
+                                onChanged: (_) => ref.read(ajustadoresProvider.notifier).toggleActivo(ajustadores[i].id),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  title: Text(aj.nombre, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: Text('WhatsApp: ${aj.telefonoWhatsApp}'),
-                  trailing: Switch(
-                    value: aj.activo,
-                    activeThumbColor: AppColors.statusConcluido,
-                    onChanged: (_) => ref.read(ajustadoresProvider.notifier).toggleActivo(aj.id),
-                  ),
-                );
-              }).toList(),
-            ),
           ),
           const SizedBox(height: 16),
 

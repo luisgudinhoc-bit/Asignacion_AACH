@@ -70,5 +70,47 @@ Poliza: 009876543
       expect(parsed.telefonoAsegurado, '5598765432');
       expect(parsed.placas, 'PWA-12-34');
     });
+
+    test('Extrae correctamente mensaje fragmentado y reenviado de chat de despacho', () {
+      const msgChat = '''
+Alejandro Chavez
+Reenviado
+3059238
+8:04 p. m.
+Alejandro Chavez
+Reenviado
+19:08 19;10
+8:04 p. m.
+Alejandro Chavez
+Reenviado
+Daniel Rojas
+8:04 p. m.
+Vas @Sergio Sanchez
+8:04 p. m.
+Vete por la mexico pachuca
+8:04 p. m.
+La pachuca sahagun esta cerrada
+8:04 p. m.
+Alejandro Chavez
+Reenviado
+maps.app.goo.gl
+https://maps.app.goo.gl/EGbX4taZmYpqBXS98
+maps.app.goo.gl
+https://maps.app.goo.gl/EGbX4taZmYpqBXS98
+8:09 p. m.
+Porfa @Andres Gudiño
+8:09 p. m.
+''';
+
+      final parsed = WhatsAppParserService.parse(msgChat);
+
+      expect(parsed.folio, '3059238');
+      expect(parsed.asegurado, 'Daniel Rojas');
+      expect(parsed.linkMaps, 'https://maps.app.goo.gl/EGbX4taZmYpqBXS98');
+      expect(parsed.ajustador, anyOf('Sergio Sanchez', 'Andres Gudiño'));
+      expect(parsed.referencias, contains('mexico pachuca'));
+      expect(parsed.municipio, 'Pachuca');
+      expect(parsed.estado, 'Hidalgo');
+    });
   });
 }
