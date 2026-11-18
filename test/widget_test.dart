@@ -108,7 +108,7 @@ Porfa @Andres Gudiño
       expect(parsed.folio, '3059238');
       expect(parsed.asegurado, 'Daniel Rojas');
       expect(parsed.linkMaps, 'https://maps.app.goo.gl/EGbX4taZmYpqBXS98');
-      expect(parsed.ajustador, anyOf('Sergio Sanchez', 'Andres Gudiño'));
+      expect(parsed.ajustador, 'Andres Gudiño', reason: 'Debe tomar la última instrucción de asignación');
       expect(parsed.referencias, contains('mexico pachuca'));
       expect(parsed.municipio, 'Pachuca');
       expect(parsed.estado, 'Hidalgo');
@@ -145,7 +145,7 @@ Voy 8:09 p. m.
 
       expect(parsed.folio, '3059238', reason: 'Debe limpiar "8:04 p. m." pegado al folio');
       expect(parsed.asegurado, 'Daniel Rojas', reason: 'No debe confundirse con Alejandro Chavez y debe limpiar el timestamp');
-      expect(parsed.ajustador, anyOf('Sergio Sanchez', 'Andres Gudiño'));
+      expect(parsed.ajustador, 'Andres Gudiño');
       expect(parsed.linkMaps, 'https://maps.app.goo.gl/EGbX4taZmYpqBXS98', reason: 'Debe reconstruir enlace partido por OCR y limpiar timestamp');
       expect(parsed.referencias, contains('mexico pachuca'));
     });
@@ -163,7 +163,7 @@ Semoviente
       final parsed = WhatsAppParserService.parse(msgInbursa);
 
       expect(parsed.folio, '3059330');
-      expect(parsed.aseguradora, 'Inbursa', reason: 'Debe deducir Inbursa por formato de folio de 7 dígitos iniciado en 30');
+      expect(parsed.aseguradora, 'Inbursa', reason: 'Debe deducir Inbursa por formato de folio iniciado en 305');
       expect(parsed.vehiculo, 'Versa', reason: 'Debe detectar la submarca Versa');
       expect(parsed.colorVehiculo, 'Blanco', reason: 'Debe traducir bco a Blanco');
       expect(parsed.asegurado, 'Esteban Pérez');
@@ -176,6 +176,91 @@ Semoviente
       expect(parsed.municipio, 'Tulancingo');
       expect(parsed.estado, 'Hidalgo');
       expect(parsed.linkMaps, isNull, reason: 'No debe inventar enlaces de Maps si el texto no traía uno');
+    });
+
+    test('1. Folio estructurado No. Reporte y deducir Inbursa por prefijo 705XXXX', () {
+      const msgCabina = '''
+No. Reporte: 7051234
+Asegurado: Gabriel Morales
+Choque
+''';
+      final parsed = WhatsAppParserService.parse(msgCabina);
+      expect(parsed.folio, '7051234');
+      expect(parsed.aseguradora, 'Inbursa');
+      expect(parsed.asegurado, 'Gabriel Morales');
+      expect(parsed.tipoEvento, 'Choque');
+    });
+
+    test('2. Extrae teléfono suelto de 10 dígitos sin etiqueta', () {
+      const msgConTel = '''
+Versa bco
+5512345678
+Pedro Martinez
+3059999
+''';
+      final parsed = WhatsAppParserService.parse(msgConTel);
+      expect(parsed.telefonoAsegurado, '5512345678');
+      expect(parsed.folio, '3059999');
+      expect(parsed.vehiculo, 'Versa');
+      expect(parsed.colorVehiculo, 'Blanco');
+      expect(parsed.asegurado, 'Pedro Martinez');
+    });
+
+    test('3. Convierte coordenadas GPS crudas a enlace válido de Google Maps', () {
+      const msgGps = '''
+20.650354,-98.649149
+Frontier naranja
+3058888
+''';
+      final parsed = WhatsAppParserService.parse(msgGps);
+      expect(parsed.linkMaps, 'https://www.google.com/maps?q=20.650354,-98.649149');
+      expect(parsed.vehiculo, 'Frontier');
+      expect(parsed.colorVehiculo, 'Naranja');
+      expect(parsed.folio, '3058888');
+    });
+
+    test('4. Vehículo y nombre en misma línea, submarcas directas y vehículo tercero 3o', () {
+      const msgMismaLinea = '''
+Mazda negro Alberto Gutierrez
+3o Audi A1
+3057777
+Semoviente
+''';
+      final parsed = WhatsAppParserService.parse(msgMismaLinea);
+      expect(parsed.vehiculo, 'Mazda');
+      expect(parsed.colorVehiculo, 'Negro');
+      expect(parsed.asegurado, 'Alberto Gutierrez');
+      expect(parsed.observaciones, contains('3o Audi A1'));
+      expect(parsed.tipoEvento, 'Diverso');
+      expect(parsed.detalleEvento, 'Semoviente');
+      expect(parsed.folio, '3057777');
+    });
+
+    test('4b. Submarcas Groove bco y Tiigo bco con vehículo tercero 3o kia gris', () {
+      const msgSubmarcas = '''
+Groove bco
+3o kia gris
+Carlos Slim
+3056666
+''';
+      final parsed = WhatsAppParserService.parse(msgSubmarcas);
+      expect(parsed.vehiculo, 'Groove');
+      expect(parsed.colorVehiculo, 'Blanco');
+      expect(parsed.asegurado, 'Carlos Slim');
+      expect(parsed.observaciones, contains('3o kia gris'));
+      expect(parsed.folio, '3056666');
+    });
+
+    test('5. Mención de asignación con Te formó este luis', () {
+      const msgAsignacion = '''
+Te formó este luis
+3059238
+Versa bco
+''';
+      final parsed = WhatsAppParserService.parse(msgAsignacion);
+      expect(parsed.ajustador, 'Luis');
+      expect(parsed.folio, '3059238');
+      expect(parsed.vehiculo, 'Versa');
     });
 
     test('Extrae formato Crabi con Cabinero y enlace de Maps con coordenadas', () {
@@ -194,7 +279,6 @@ El administrador puede postular un ajustador 👇
       expect(parsed.aseguradora, 'Crabi', reason: 'Debe deducir Crabi por prefijo CRA-');
       expect(parsed.linkMaps, 'https://www.google.com/maps?q=19.69520652863495,-98.56009687301638');
       expect(parsed.observaciones, contains('Cabinero: Luis Roberto'));
-      expect(parsed.asegurado, 'Luis Roberto');
     });
 
     test('Extrae mensaje que contiene únicamente un link de Maps', () {

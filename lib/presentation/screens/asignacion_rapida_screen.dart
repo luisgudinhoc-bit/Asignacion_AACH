@@ -182,14 +182,15 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
       // Ajustador detectado por mención en WhatsApp
       if (parsed.ajustador != null && parsed.ajustador!.isNotEmpty) {
         final ajustadores = ref.read(activeAjustadoresProvider);
-        final match = ajustadores.firstWhere(
+        final match = ajustadores.where(
           (a) => a.nombre.toLowerCase().contains(parsed.ajustador!.toLowerCase()) ||
               parsed.ajustador!.toLowerCase().contains(a.nombre.toLowerCase()),
-          orElse: () => ajustadores.first,
-        );
-        _selectedAjustadorId = match.id;
-        _selectedAjustadorNombre = match.nombre;
-        _selectedAjustadorTelefono = match.telefonoWhatsApp;
+        ).firstOrNull;
+        if (match != null) {
+          _selectedAjustadorId = match.id;
+          _selectedAjustadorNombre = match.nombre;
+          _selectedAjustadorTelefono = match.telefonoWhatsApp;
+        }
       }
     });
   }

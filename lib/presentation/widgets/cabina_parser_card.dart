@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/services/whatsapp_parser_service.dart';
 
-/// Panel para capturar y analizar mensajes de cabina pegados desde WhatsApp o texto libre
+/// Panel limpio para capturar y analizar mensajes de cabina o texto libre de WhatsApp
 class CabinaParserCard extends StatefulWidget {
   final Function(ParsedCabinaMessage parsed) onApplyParsed;
 
@@ -91,13 +91,13 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
               child: const Icon(Icons.paste_rounded, color: AppColors.whatsappGreen),
             ),
             title: const Text(
-              'Carga Rápida (Mensaje de WhatsApp)',
+              'Pega el texto del chat o mensaje libre',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
             subtitle: Text(
               _parsedResult != null && _parsedResult!.hasContent
                   ? 'Detectado: Folio ${_parsedResult?.folio ?? "S/F"} • ${_parsedResult?.aseguradora ?? "Cia"} • ${_parsedResult?.vehiculo ?? ""}'
-                  : 'Pega aquí el texto de Inbursa, Crabi, link de Maps o mensaje de cabina',
+                  : 'Inbursa, Crabi, coordenadas GPS, link de Maps o chat libre',
               style: TextStyle(
                 fontSize: 12,
                 color: _parsedResult != null && _parsedResult!.hasContent
@@ -121,33 +121,52 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Pega el texto del chat o mensaje libre:',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _pasteFromClipboard,
+                          icon: const Icon(Icons.content_paste_rounded, size: 16),
+                          label: const Text(
+                            'Pegar Portapapeles',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.whatsappGreen,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
                       ),
-                      ElevatedButton.icon(
-                        onPressed: _pasteFromClipboard,
-                        icon: const Icon(Icons.content_paste_rounded, size: 16),
-                        label: const Text('Pegar Portapapeles', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.whatsappGreen,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          visualDensity: VisualDensity.compact,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _processText(_rawTextController.text, autoApply: false),
+                          icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+                          label: const Text(
+                            'Interpretar Texto',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: isDark ? AppColors.primaryLight : AppColors.primary,
+                            side: BorderSide(
+                              color: isDark ? AppColors.primaryLight : AppColors.primary,
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            visualDensity: VisualDensity.compact,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   TextField(
                     controller: _rawTextController,
                     minLines: 3,
                     maxLines: 6,
                     onChanged: (text) => _processText(text, autoApply: false),
                     decoration: InputDecoration(
-                      hintText: 'Ejemplo:\nKm 164 +200 dir Atlacomulco\nVersa bco\nEsteban Pérez\nSemoviente\n3059330\n22:30 22:32\nO pega solo el link de Maps...',
+                      hintText: 'Ejemplo:\nKm 164 +200 dir Atlacomulco\nVersa bco\nEsteban Pérez\nSemoviente\n3059330\n22:30 22:32\nO pega coordenadas (20.650354,-98.649149) o link de Maps...',
                       hintStyle: TextStyle(
                         fontSize: 12,
                         color: theme.hintColor.withValues(alpha: 0.6),
@@ -172,6 +191,8 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
                           _buildPreviewBadge(Icons.assignment_ind, 'Ajustador: ${_parsedResult!.ajustador!}'),
                         if (_parsedResult!.asegurado != null)
                           _buildPreviewBadge(Icons.person, _parsedResult!.asegurado!),
+                        if (_parsedResult!.telefonoAsegurado != null)
+                          _buildPreviewBadge(Icons.phone_android_rounded, 'Tel: ${_parsedResult!.telefonoAsegurado!}'),
                         if (_parsedResult!.vehiculo != null)
                           _buildPreviewBadge(Icons.directions_car, _parsedResult!.vehiculo!),
                         if (_parsedResult!.colorVehiculo != null)
