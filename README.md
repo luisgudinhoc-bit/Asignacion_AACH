@@ -198,7 +198,7 @@ Para vincular la aplicación con su hoja de cálculo maestra de Google Sheets, c
 ### Pasos Resumidos:
 1. Crear proyecto en Google Cloud y habilitar la **Google Sheets API**.
 2. Configurar la pantalla de consentimiento OAuth (permisos `spreadsheets`).
-3. Registrar la credencial OAuth de tipo Android con el paquete `com.aach.asignacion_siniestros` y la huella digital `SHA-1` de firma.
+3. Registrar la credencial OAuth de tipo Android con el paquete `com.aach.asignacionsiniestros` y la huella digital `SHA-1` de firma.
 4. Crear una hoja en Google Sheets, copiar el `Spreadsheet ID` e ingresarlo en la pantalla de **Ajustes** de la app.
 
 ---

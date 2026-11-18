@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.aach.asignacion_siniestros">
+    package="com.aach.asignacionsiniestros">
 
     <!-- Permisos Operativos -->
     <uses-permission android:name="android.permission.INTERNET"/>

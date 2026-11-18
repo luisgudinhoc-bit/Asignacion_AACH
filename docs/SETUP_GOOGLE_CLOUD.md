@@ -57,7 +57,7 @@ Copie el valor hexadecimal que aparece en la línea `SHA1: XX:XX:XX:...`.
 2. Haga clic en **Crear credenciales** > **ID de cliente de OAuth**.
 3. Seleccione **Tipo de aplicación:** `Android`.
 4. Nombre: `Asignación AACH Android Debug`.
-5. **Nombre del paquete:** `com.aach.asignacion_siniestros` (debe coincidir exactamente con el configurado en `android/app/build.gradle`).
+5. **Nombre del paquete:** `com.aach.asignacionsiniestros` (debe coincidir exactamente con el configurado en `android/app/build.gradle.kts`).
 6. **Huella digital del certificado SHA-1:** Pegue la huella obtenida en el paso 4.1.
 7. Haga clic en **Crear**.
 

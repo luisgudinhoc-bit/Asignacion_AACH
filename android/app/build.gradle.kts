@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.aach.asignacion_siniestros"
+    namespace = "com.aach.asignacionsiniestros"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.aach.asignacion_siniestros"
+        applicationId = "com.aach.asignacionsiniestros"
         minSdk = 23
         targetSdk = 34
         versionCode = flutter.versionCode
