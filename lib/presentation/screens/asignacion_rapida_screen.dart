@@ -6,6 +6,7 @@ import '../../core/services/location_service.dart';
 import '../../core/services/whatsapp_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/models/siniestro_model.dart';
+import '../../domain/services/location_resolver_service.dart';
 import '../../domain/services/whatsapp_parser_service.dart';
 import '../providers/ajustador_provider.dart';
 import '../providers/siniestro_provider.dart';
@@ -52,6 +53,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
   String _selectedAjustadorTelefono = '';
 
   bool _isGettingGps = false;
+  bool _isResolvingLocation = false;
 
   @override
   void initState() {
@@ -83,6 +85,40 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     _mapsController.dispose();
     _observacionesController.dispose();
     super.dispose();
+  }
+
+  Future<void> _resolveLocationFromMaps(String url) async {
+    if (url.trim().isEmpty) return;
+    setState(() => _isResolvingLocation = true);
+    try {
+      final resolved = await LocationResolverService.resolveFromMapsUrl(url);
+      if (resolved != null && mounted) {
+        setState(() {
+          if (resolved.municipio != null && resolved.municipio!.isNotEmpty) {
+            _municipioController.text = resolved.municipio!;
+          }
+          if (resolved.estado != null && resolved.estado!.isNotEmpty) {
+            _estadoController.text = resolved.estado!;
+          }
+          if (resolved.calle != null && resolved.calle!.isNotEmpty) {
+            if (_referenciasController.text.isEmpty) {
+              _referenciasController.text = resolved.calle!;
+            } else if (!_referenciasController.text.contains(resolved.calle!)) {
+              _referenciasController.text = '${resolved.calle!} • ${_referenciasController.text}';
+            }
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📍 Ubicación resuelta: ${resolved.municipio ?? ""} ${resolved.estado ?? ""}'),
+            backgroundColor: AppColors.statusConcluido,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isResolvingLocation = false);
+    }
   }
 
   void _applyParsedData(ParsedCabinaMessage parsed) {
@@ -127,6 +163,8 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
 
       if (parsed.linkMaps != null && parsed.linkMaps!.isNotEmpty) {
         _mapsController.text = parsed.linkMaps!;
+        // Resolver automáticamente municipio, estado y calle desde el link de Maps
+        _resolveLocationFromMaps(parsed.linkMaps!);
       }
       if (parsed.tipoEvento != null && parsed.tipoEvento!.isNotEmpty) {
         _selectedTipoEvento = parsed.tipoEvento!;
@@ -466,9 +504,30 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               const SizedBox(height: 8),
               TextFormField(
                 controller: _mapsController,
-                decoration: const InputDecoration(
+                onChanged: (text) {
+                  if (text.contains('maps') && text.contains('http')) {
+                    _resolveLocationFromMaps(text);
+                  }
+                },
+                decoration: InputDecoration(
                   hintText: 'Enlace Google Maps (Opcional - https://maps.app.goo.gl/...)',
-                  prefixIcon: Icon(Icons.pin_drop_outlined),
+                  prefixIcon: const Icon(Icons.pin_drop_outlined),
+                  suffixIcon: IconButton(
+                    icon: _isResolvingLocation
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_fix_high_rounded, color: AppColors.primaryLight),
+                    tooltip: 'Resolver Municipio y Estado desde Maps',
+                    onPressed: () {
+                      final url = _mapsController.text.trim();
+                      if (url.isNotEmpty) {
+                        _resolveLocationFromMaps(url);
+                      }
+                    },
+                  ),
                 ),
               ),
               const SizedBox(height: 16),

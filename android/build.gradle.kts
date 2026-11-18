@@ -20,11 +20,9 @@ subprojects {
 }
 
 subprojects {
-    afterEvaluate {
-        tasks.configureEach {
-            if (name.startsWith("lintVital")) {
-                enabled = false
-            }
+    tasks.configureEach {
+        if (name.startsWith("lintVital")) {
+            enabled = false
         }
     }
 }

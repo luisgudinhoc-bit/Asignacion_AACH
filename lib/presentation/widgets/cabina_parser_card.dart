@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/services/ocr/ocr_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/services/whatsapp_parser_service.dart';
 
-/// Panel colapsable para pegar y analizar mensajes brutos de cabina de aseguradoras
+/// Panel para capturar y analizar mensajes de cabina por Imagen (OCR local) o Texto
 class CabinaParserCard extends StatefulWidget {
   final Function(ParsedCabinaMessage parsed) onApplyParsed;
 
@@ -19,9 +20,10 @@ class CabinaParserCard extends StatefulWidget {
 class _CabinaParserCardState extends State<CabinaParserCard> {
   final TextEditingController _rawTextController = TextEditingController();
   ParsedCabinaMessage? _parsedResult;
-  bool _isExpanded = false;
+  bool _isExpanded = true;
+  bool _isProcessingImage = false;
 
-  void _processText(String text) {
+  void _processText(String text, {bool autoApply = false}) {
     if (text.trim().isEmpty) {
       setState(() {
         _parsedResult = null;
@@ -32,28 +34,62 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
     setState(() {
       _parsedResult = result;
     });
+
+    if (autoApply && result.hasContent) {
+      _applyToForm();
+    }
   }
 
   Future<void> _pasteFromClipboard() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data != null && data.text != null) {
       _rawTextController.text = data.text!;
-      _processText(data.text!);
+      _processText(data.text!, autoApply: true);
+    }
+  }
+
+  Future<void> _processImageOcr({required bool fromCamera}) async {
+    setState(() => _isProcessingImage = true);
+    try {
+      final text = fromCamera
+          ? await OcrService.extractTextFromCamera()
+          : await OcrService.extractTextFromGallery();
+
+      if (text != null && text.trim().isNotEmpty) {
+        _rawTextController.text = text;
+        _processText(text, autoApply: true);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚡ Captura procesada con OCR Local (0 tokens). Datos volcados al formulario.'),
+              backgroundColor: AppColors.statusConcluido,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al leer imagen: $e'),
+            backgroundColor: AppColors.statusCancelado,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingImage = false);
+      }
     }
   }
 
   void _applyToForm() {
     if (_parsedResult != null) {
       widget.onApplyParsed(_parsedResult!);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Datos de cabina extraídos y volcados al formulario.'),
-          duration: Duration(seconds: 2),
-          backgroundColor: AppColors.statusConcluido,
-        ),
-      );
       setState(() {
-        _isExpanded = false; // Colapsar tras aplicar para despejar pantalla
+        _isExpanded = false; // Colapsar tras aplicar para dejar ver los campos a validar
       });
     }
   }
@@ -91,16 +127,22 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
             },
             leading: CircleAvatar(
               backgroundColor: AppColors.whatsappGreen.withValues(alpha: 0.15),
-              child: const Icon(Icons.smart_toy_rounded, color: AppColors.whatsappGreen),
+              child: _isProcessingImage
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.whatsappGreen),
+                    )
+                  : const Icon(Icons.document_scanner_rounded, color: AppColors.whatsappGreen),
             ),
             title: const Text(
-              'Pegar mensaje de Cabina',
+              'Carga Rápida (Captura o Mensaje)',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
             subtitle: Text(
               _parsedResult != null && _parsedResult!.hasContent
-                  ? 'Datos detectados: Folio ${_parsedResult?.folio ?? "S/F"} • ${_parsedResult?.aseguradora ?? "Cia"}'
-                  : 'Extraer automáticamente folio, aseguradora, auto y GPS',
+                  ? 'Detectado: Folio ${_parsedResult?.folio ?? "S/F"} • ${_parsedResult?.aseguradora ?? "Cia"}'
+                  : 'Sube la captura de WhatsApp o pega el texto (Cero tokens de IA)',
               style: TextStyle(
                 fontSize: 12,
                 color: _parsedResult != null && _parsedResult!.hasContent
@@ -123,17 +165,71 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Botones rápidos de captura por Imagen
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.bolt_rounded, size: 16, color: AppColors.accent),
+                            SizedBox(width: 6),
+                            Text(
+                              'Escanear con OCR Local (0 Tokens / Sin Internet)',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _isProcessingImage ? null : () => _processImageOcr(fromCamera: false),
+                                icon: const Icon(Icons.photo_library_rounded, size: 16),
+                                label: const Text('Subir Captura'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryLight,
+                                  foregroundColor: Colors.white,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _isProcessingImage ? null : () => _processImageOcr(fromCamera: true),
+                                icon: const Icon(Icons.camera_alt_rounded, size: 16),
+                                label: const Text('Tomar Foto'),
+                                style: OutlinedButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Pega el texto tal cual llegó en WhatsApp:',
+                        'O pega el texto directo de WhatsApp:',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                       ),
                       TextButton.icon(
                         onPressed: _pasteFromClipboard,
                         icon: const Icon(Icons.content_paste_rounded, size: 16),
-                        label: const Text('Pegar', style: TextStyle(fontSize: 12)),
+                        label: const Text('Pegar y Extraer', style: TextStyle(fontSize: 12)),
                         style: TextButton.styleFrom(
                           foregroundColor: AppColors.whatsappGreen,
                           visualDensity: VisualDensity.compact,
@@ -144,11 +240,10 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
                   const SizedBox(height: 6),
                   TextField(
                     controller: _rawTextController,
-                    maxLines: 4,
-                    onChanged: _processText,
+                    maxLines: 3,
+                    onChanged: (text) => _processText(text, autoApply: false),
                     decoration: InputDecoration(
-                      hintText:
-                          'Ejemplo:\n*CABINA QUALITAS*\nREPORTE: 0424123456\nASEGURADO: ROBERTO HERNANDEZ\nTEL: 5541998877\nAUTO: NISSAN VERSA...',
+                      hintText: 'Pega aquí el chat o el texto extraído...',
                       hintStyle: TextStyle(
                         fontSize: 12,
                         color: theme.hintColor.withValues(alpha: 0.7),
@@ -169,23 +264,25 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
                           _buildPreviewBadge(Icons.confirmation_number, 'Folio: ${_parsedResult!.folio}'),
                         if (_parsedResult!.aseguradora != null)
                           _buildPreviewBadge(Icons.apartment, _parsedResult!.aseguradora!),
+                        if (_parsedResult!.ajustador != null)
+                          _buildPreviewBadge(Icons.assignment_ind, 'Ajustador: ${_parsedResult!.ajustador!}'),
                         if (_parsedResult!.asegurado != null)
                           _buildPreviewBadge(Icons.person, _parsedResult!.asegurado!),
                         if (_parsedResult!.telefonoAsegurado != null)
                           _buildPreviewBadge(Icons.phone, _parsedResult!.telefonoAsegurado!),
-                        if (_parsedResult!.vehiculo != null)
-                          _buildPreviewBadge(Icons.directions_car, _parsedResult!.vehiculo!),
-                        if (_parsedResult!.placas != null)
-                          _buildPreviewBadge(Icons.pin, 'Placas: ${_parsedResult!.placas}'),
+                        if (_parsedResult!.municipio != null)
+                          _buildPreviewBadge(Icons.location_city, 'Mpio: ${_parsedResult!.municipio!}'),
+                        if (_parsedResult!.estado != null)
+                          _buildPreviewBadge(Icons.map, 'Edo: ${_parsedResult!.estado!}'),
                         if (_parsedResult!.linkMaps != null)
                           _buildPreviewBadge(Icons.location_on, 'Maps detectado'),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     ElevatedButton.icon(
                       onPressed: _applyToForm,
                       icon: const Icon(Icons.flash_on_rounded, color: Colors.white),
-                      label: const Text('Autocompletar Formulario'),
+                      label: const Text('Volcar y Validar Formulario'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.whatsappGreen,
                         foregroundColor: Colors.white,

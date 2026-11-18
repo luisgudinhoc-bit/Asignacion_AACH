@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:asignacion_aach/domain/services/location_resolver_service.dart';
 import 'package:asignacion_aach/domain/services/whatsapp_parser_service.dart';
 
 void main() {
@@ -111,6 +112,26 @@ Porfa @Andres Gudiño
       expect(parsed.referencias, contains('mexico pachuca'));
       expect(parsed.municipio, 'Pachuca');
       expect(parsed.estado, 'Hidalgo');
+    });
+  });
+
+  group('LocationResolverService Tests', () {
+    test('Deduce municipio y estado desde URL de Maps', () async {
+      const url = 'https://www.google.com/maps/place/Pachuca+de+Soto,+Hgo./@20.1011,-98.7591';
+      final resolved = await LocationResolverService.resolveFromMapsUrl(url);
+
+      expect(resolved, isNotNull);
+      expect(resolved?.municipio, 'Pachuca');
+      expect(resolved?.estado, 'Hidalgo');
+    });
+
+    test('Deduce municipio Sahagun y estado Hidalgo desde slug', () async {
+      const url = 'https://maps.google.com/?q=Tepeapulco+Cd+Sahagun+Hidalgo';
+      final resolved = await LocationResolverService.resolveFromMapsUrl(url);
+
+      expect(resolved, isNotNull);
+      expect(resolved?.municipio, contains('Sahagún'));
+      expect(resolved?.estado, 'Hidalgo');
     });
   });
 }
