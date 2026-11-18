@@ -1,4 +1,5 @@
 import '../../core/utils/string_extensions.dart';
+import 'arco_norte_service.dart';
 
 /// Resultado estructurado del análisis de un mensaje de cabina o reenvíos de chat
 class ParsedCabinaMessage {
@@ -81,6 +82,13 @@ class WhatsAppParserService {
     // Deducir Municipio y Estado a partir de referencias o ubicación
     final locGeo = _deduceMunicipioEstado(ubicacion ?? referencias ?? '');
 
+    // Detección especializada para Autopista Arco Norte por Kilometraje
+    final arcoMatch = ArcoNorteService.findKmInText('$rawText ${referencias ?? ""} ${ubicacion ?? ""}');
+    final municipioFinal = locGeo['municipio'] ?? arcoMatch?.localidad;
+    final estadoFinal = locGeo['estado'] ?? arcoMatch?.estado;
+    final linkMapsFinal = linkMaps ?? arcoMatch?.linkGoogleMaps;
+    final referenciasFinal = referencias ?? (arcoMatch != null ? 'Autopista Arco Norte Km ${arcoMatch.kilometro.toStringAsFixed(0)} (${arcoMatch.tramoDescripcion}) CP ${arcoMatch.codigoPostal}' : null);
+
     return ParsedCabinaMessage(
       folio: folio,
       aseguradora: aseguradora,
@@ -92,10 +100,10 @@ class WhatsAppParserService {
       placas: placas,
       poliza: poliza,
       ubicacion: ubicacion,
-      municipio: locGeo['municipio'],
-      estado: locGeo['estado'],
-      referencias: referencias,
-      linkMaps: linkMaps,
+      municipio: municipioFinal,
+      estado: estadoFinal,
+      referencias: referenciasFinal,
+      linkMaps: linkMapsFinal,
       tipoEvento: tipoEvento,
       observaciones: observaciones,
       rawText: rawText,

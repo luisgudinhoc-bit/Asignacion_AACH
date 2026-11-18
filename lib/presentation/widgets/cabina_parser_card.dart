@@ -68,6 +68,14 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
             ),
           );
         }
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📱 El OCR por cámara/captura corre nativamente en el celular Android (0 tokens). En esta versión Web de PC, pega el texto del mensaje en el recuadro para probar en tiempo real.'),
+            backgroundColor: AppColors.statusAsignado,
+            duration: Duration(seconds: 4),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {

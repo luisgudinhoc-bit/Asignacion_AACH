@@ -6,6 +6,7 @@ import '../../core/services/location_service.dart';
 import '../../core/services/whatsapp_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/models/siniestro_model.dart';
+import '../../domain/services/arco_norte_service.dart';
 import '../../domain/services/location_resolver_service.dart';
 import '../../domain/services/whatsapp_parser_service.dart';
 import '../providers/ajustador_provider.dart';
@@ -485,6 +486,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               TextFormField(
                 controller: _referenciasController,
                 maxLines: 2,
+                onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   hintText: 'Referencias: calle, carretera, autopista, cerradas, km...',
                   prefixIcon: const Icon(Icons.directions_outlined),
@@ -500,6 +502,72 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                     onPressed: _isGettingGps ? null : _fetchCurrentGps,
                   ),
                 ),
+              ),
+              // Banner reactivo de Arco Norte si se detecta un kilometraje
+              Builder(
+                builder: (context) {
+                  final textToCheck = '${_referenciasController.text} ${_municipioController.text}';
+                  final match = ArcoNorteService.findKmInText(textToCheck);
+                  if (match == null) return const SizedBox.shrink();
+
+                  return Container(
+                    margin: const EdgeInsets.only(top: 8, bottom: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.primaryLight.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.alt_route_rounded, color: AppColors.primaryLight, size: 26),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '🛣️ Arco Norte: Tramo ${match.localidad}',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primaryLight),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Km ${match.kilometro.toStringAsFixed(0)} • CP ${match.codigoPostal} • ${match.estado}',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryLight,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _municipioController.text = match.localidad;
+                              _estadoController.text = match.estado;
+                              _mapsController.text = match.linkGoogleMaps;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('🛣️ Ubicación ajustada a Tramo ${match.localidad} (${match.estado})'),
+                                backgroundColor: AppColors.statusConcluido,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.check, size: 14),
+                          label: const Text('Aplicar', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 8),
               TextFormField(
