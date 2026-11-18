@@ -22,9 +22,18 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("releaseSign") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("releaseSign")
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(

@@ -42,6 +42,7 @@ migrate_working_dir/
 # Sensitive keys and secrets
 *.jks
 *.keystore
+!android/app/debug.keystore
 key.properties
 google-services.json
 GoogleService-Info.plist
