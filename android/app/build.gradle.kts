@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.aach.asignacion_siniestros"
-    compileSdk = 34
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
