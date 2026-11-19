@@ -126,13 +126,13 @@ class SyncStatusScreen extends ConsumerWidget {
                     leading: const Icon(Icons.table_chart_outlined, color: AppColors.secondary),
                     title: const Text('ID de Google Sheets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     subtitle: Text(
-                      spreadsheetId != null && spreadsheetId.isNotEmpty
+                      spreadsheetId.isNotEmpty
                           ? spreadsheetId
                           : 'No configurado en Ajustes',
                       style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 11,
-                        color: spreadsheetId != null && spreadsheetId.isNotEmpty ? null : Colors.red,
+                        color: spreadsheetId.isNotEmpty ? null : Colors.red,
                       ),
                     ),
                   ),

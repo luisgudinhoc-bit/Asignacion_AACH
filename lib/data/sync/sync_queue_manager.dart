@@ -65,7 +65,7 @@ class SyncQueueManager extends ChangeNotifier {
   /// Procesa secuencialmente todos los elementos pendientes en la cola de sincronización
   Future<void> processQueue() async {
     final spreadsheetId = LocalStorageService.getSpreadsheetId();
-    if (spreadsheetId == null || spreadsheetId.trim().isEmpty) {
+    if (spreadsheetId.trim().isEmpty) {
       _state = SyncState.authRequired;
       _lastErrorMessage = 'ID de Hoja de Cálculo no configurado.';
       notifyListeners();
@@ -132,7 +132,7 @@ class SyncQueueManager extends ChangeNotifier {
   /// Descarga y fusiona los registros remotos de Google Sheets a la base local
   Future<void> pullFromRemote() async {
     final spreadsheetId = LocalStorageService.getSpreadsheetId();
-    if (spreadsheetId == null || spreadsheetId.isEmpty || !_sheetsService.isSignedIn) {
+    if (spreadsheetId.isEmpty || !_sheetsService.isSignedIn) {
       return;
     }
 

@@ -29,7 +29,7 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
   void initState() {
     super.initState();
     final savedId = LocalStorageService.getSpreadsheetId();
-    if (savedId != null) {
+    if (savedId.isNotEmpty) {
       _sheetIdController.text = savedId;
     }
   }
@@ -169,7 +169,7 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
 
   Future<void> _syncAjustadoresWithSheets() async {
     final spreadsheetId = LocalStorageService.getSpreadsheetId();
-    if (spreadsheetId == null || spreadsheetId.isEmpty) {
+    if (spreadsheetId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('⚠️ Configure y guarde primero la URL o ID de su hoja de cálculo.'),
@@ -219,7 +219,7 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
 
   Future<void> _syncAseguradorasWithSheets() async {
     final spreadsheetId = LocalStorageService.getSpreadsheetId();
-    if (spreadsheetId == null || spreadsheetId.isEmpty) {
+    if (spreadsheetId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('⚠️ Configure y guarde primero la URL o ID de su hoja de cálculo.'),

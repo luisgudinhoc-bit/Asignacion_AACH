@@ -187,7 +187,7 @@ class LocalStorageService {
   /// Retorna la URL web directa para abrir el archivo en Google Drive / Google Sheets
   static String? getSpreadsheetUrl() {
     final id = getSpreadsheetId();
-    if (id == null || id.isEmpty) return null;
+    if (id.isEmpty) return null;
     return 'https://docs.google.com/spreadsheets/d/$id/edit';
   }
 
