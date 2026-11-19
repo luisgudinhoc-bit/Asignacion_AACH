@@ -41,4 +41,8 @@ class AppConstants {
 
   // Prefijos y formatos telefónicos
   static const String defaultCountryCode = '521'; // México WhatsApp directo
+
+  // Google OAuth 2.0 Web Client ID
+  static const String googleOAuthWebClientId =
+      '160335093355-sk6bje3fojak8dsj1p30jp8qppr6ev56.apps.googleusercontent.com';
 }

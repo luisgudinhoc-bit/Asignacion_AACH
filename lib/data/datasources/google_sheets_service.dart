@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:http/http.dart' as http;
+import '../../core/constants/app_constants.dart';
 import '../../core/constants/sheets_config.dart';
 import '../../domain/models/ajustador_model.dart';
 import '../../domain/models/aseguradora_model.dart';
@@ -31,6 +32,8 @@ class _AuthenticatedClient extends http.BaseClient {
 /// Servicio integral para comunicación directa con Google Sheets API v4
 class GoogleSheetsService {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: kIsWeb ? AppConstants.googleOAuthWebClientId : null,
+    serverClientId: AppConstants.googleOAuthWebClientId,
     scopes: [
       sheets.SheetsApi.spreadsheetsScope,
       'email',
