@@ -265,6 +265,36 @@ class GoogleSheetsService {
   /// Respeta íntegramente las columnas G:K (ATENCION, CASETAS, OTROS, KILOMETRAJE, TOTAL)
   Future<int?> appendSiniestro(String spreadsheetId, SiniestroModel siniestro) async {
     _assertAuthenticated();
+
+    // 1. Buscar la primera fila disponible donde la Columna D (REPORTE) esté vacía
+    // para aprovechar filas pre-configuradas con fórmulas en G:K sin saltar al final
+    try {
+      final colRange = await _sheetsApi!.spreadsheets.values.get(
+        spreadsheetId,
+        '${SheetsConfig.tabSiniestros}!D2:D',
+      );
+      if (colRange.values != null) {
+        for (int i = 0; i < colRange.values!.length; i++) {
+          final row = colRange.values![i];
+          final val = row.isNotEmpty ? row[0].toString().trim() : '';
+          if (val.isEmpty) {
+            final targetRow = i + 2; // +2 por encabezado y 1-based index
+            final updateRange = '${SheetsConfig.tabSiniestros}!A$targetRow:F$targetRow';
+            await _sheetsApi!.spreadsheets.values.update(
+              sheets.ValueRange(values: [siniestro.toSheetsRowAtoF()]),
+              spreadsheetId,
+              updateRange,
+              valueInputOption: 'USER_ENTERED',
+            );
+            return targetRow;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Aviso al buscar fila vacía en SINIESTROS: $e');
+    }
+
+    // 2. Si no hay filas vacías preexistentes, anexar como nueva fila
     final valueRange = sheets.ValueRange(
       values: [siniestro.toSheetsRowAtoF()],
     );
@@ -356,8 +386,13 @@ class GoogleSheetsService {
       for (int i = 0; i < response.values!.length; i++) {
         final row = response.values![i];
         if (row.isNotEmpty) {
-          final rowNumber = i + 2;
-          list.add(SiniestroModel.fromSheetsRow(row, rowNumber: rowNumber));
+          final folio = row.length > 3 ? row[3].toString().trim() : '';
+          final fecha = row.isNotEmpty ? row[0].toString().trim() : '';
+          // Ignorar filas vacías que solo tienen fórmulas en G:K
+          if (folio.isNotEmpty || fecha.isNotEmpty) {
+            final rowNumber = i + 2;
+            list.add(SiniestroModel.fromSheetsRow(row, rowNumber: rowNumber));
+          }
         }
       }
     }
