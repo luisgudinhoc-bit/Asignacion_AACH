@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/constants/app_constants.dart';
 import '../../domain/models/ajustador_model.dart';
+import '../../domain/models/aseguradora_model.dart';
 import '../../domain/models/siniestro_model.dart';
 import '../../domain/models/sync_item_model.dart';
 
@@ -9,6 +10,7 @@ import '../../domain/models/sync_item_model.dart';
 class LocalStorageService {
   static late Box _siniestrosBox;
   static late Box _ajustadoresBox;
+  static late Box _aseguradorasBox;
   static late Box _syncQueueBox;
   static late Box _settingsBox;
 
@@ -18,6 +20,7 @@ class LocalStorageService {
 
     _siniestrosBox = await Hive.openBox(AppConstants.siniestrosBox);
     _ajustadoresBox = await Hive.openBox(AppConstants.ajustadoresBox);
+    _aseguradorasBox = await Hive.openBox(AppConstants.aseguradorasBox);
     _syncQueueBox = await Hive.openBox(AppConstants.syncQueueBox);
     _settingsBox = await Hive.openBox(AppConstants.appSettingsBox);
 
@@ -27,6 +30,14 @@ class LocalStorageService {
         await _ajustadoresBox.put(a.id, a.toMap());
       }
       debugPrint('Precargados ${AjustadorModel.defaultAjustadores.length} ajustadores iniciales.');
+    }
+
+    // Precargar catálogo de aseguradoras iniciales si la caja está vacía
+    if (_aseguradorasBox.isEmpty) {
+      for (final asg in AseguradoraModel.defaultList) {
+        await _aseguradorasBox.put(asg.nombre, asg.toMap());
+      }
+      debugPrint('Precargadas ${AseguradoraModel.defaultList.length} aseguradoras iniciales.');
     }
   }
 
@@ -80,6 +91,41 @@ class LocalStorageService {
 
   static Future<void> deleteAjustador(String id) async {
     await _ajustadoresBox.delete(id);
+  }
+
+  static Future<void> saveAllAjustadores(List<AjustadorModel> lista) async {
+    await _ajustadoresBox.clear();
+    for (final a in lista) {
+      await _ajustadoresBox.put(a.id, a.toMap());
+    }
+  }
+
+  // ==================== ASEGURADORAS ====================
+
+  static List<AseguradoraModel> getAseguradoras() {
+    final list = <AseguradoraModel>[];
+    for (final key in _aseguradorasBox.keys) {
+      final data = _aseguradorasBox.get(key);
+      if (data is Map) {
+        list.add(AseguradoraModel.fromMap(data));
+      }
+    }
+    return list;
+  }
+
+  static Future<void> saveAseguradora(AseguradoraModel aseguradora) async {
+    await _aseguradorasBox.put(aseguradora.nombre, aseguradora.toMap());
+  }
+
+  static Future<void> deleteAseguradora(String nombre) async {
+    await _aseguradorasBox.delete(nombre);
+  }
+
+  static Future<void> saveAllAseguradoras(List<AseguradoraModel> lista) async {
+    await _aseguradorasBox.clear();
+    for (final a in lista) {
+      await _aseguradorasBox.put(a.nombre, a.toMap());
+    }
   }
 
   // ==================== COLA DE SINCRONIZACIÓN ====================

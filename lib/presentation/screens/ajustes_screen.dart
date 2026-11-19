@@ -4,11 +4,14 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/datasources/local_storage_service.dart';
+import '../../domain/models/ajustador_model.dart';
+import '../../domain/models/aseguradora_model.dart';
 import '../providers/ajustador_provider.dart';
+import '../providers/aseguradora_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 
-/// Pantalla de configuración del sistema, catálogo de ajustadores y vinculación de Sheets
+/// Pantalla de configuración del sistema, catálogo de ajustadores, aseguradoras y vinculación de Sheets
 class AjustesScreen extends ConsumerStatefulWidget {
   const AjustesScreen({super.key});
 
@@ -19,6 +22,8 @@ class AjustesScreen extends ConsumerStatefulWidget {
 class _AjustesScreenState extends ConsumerState<AjustesScreen> {
   final _sheetIdController = TextEditingController();
   bool _isTestingSheet = false;
+  bool _isSyncingAjustadores = false;
+  bool _isSyncingAseguradoras = false;
 
   @override
   void initState() {
@@ -56,7 +61,7 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ Pestañas SINIESTROS y AJUSTADORES verificadas con éxito en Google Sheets.'),
+              content: Text('✅ Pestañas SINIESTROS, AJUSTADORES y CATALOGO_ASEGURADORAS verificadas en Google Sheets.'),
               backgroundColor: AppColors.statusConcluido,
             ),
           );
@@ -142,6 +147,7 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
               const Text(
                 'Recomendaciones:\n'
                 '• En Android: Revisa que en Google Cloud Console tengas agregada la huella SHA-1 de tu APK y el paquete "com.aach.asignacionsiniestros".\n'
+                '• En Web (localhost:8080): Agrega http://localhost:8080 en los "Orígenes de JavaScript autorizados" de tu ID de cliente web.\n'
                 '• En la pantalla de consentimiento OAuth, agrega tu correo como usuario de prueba.\n\n'
                 '💡 Recuerda: Puedes abrir y consultar tu hoja directamente con el botón "Abrir en Drive" sin necesidad de inicio de sesión.',
                 style: TextStyle(fontSize: 12),
@@ -158,6 +164,108 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
       );
     }
   }
+
+  // ==================== SINCRONIZACIÓN AJUSTADORES ====================
+
+  Future<void> _syncAjustadoresWithSheets() async {
+    final spreadsheetId = LocalStorageService.getSpreadsheetId();
+    if (spreadsheetId == null || spreadsheetId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Configure y guarde primero la URL o ID de su hoja de cálculo.'),
+          backgroundColor: AppColors.statusAsignado,
+        ),
+      );
+      return;
+    }
+
+    final sheetsService = ref.read(googleSheetsServiceProvider);
+    if (!sheetsService.isSignedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Inicie sesión con Google para sincronizar los ajustadores.'),
+          backgroundColor: AppColors.statusAsignado,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSyncingAjustadores = true);
+    try {
+      await ref.read(ajustadoresProvider.notifier).syncWithGoogleSheets(sheetsService, spreadsheetId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Catálogo de ajustadores sincronizado exitosamente con Google Sheets.'),
+            backgroundColor: AppColors.statusConcluido,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al sincronizar ajustadores: $e'),
+            backgroundColor: AppColors.statusCancelado,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncingAjustadores = false);
+    }
+  }
+
+  // ==================== SINCRONIZACIÓN ASEGURADORAS ====================
+
+  Future<void> _syncAseguradorasWithSheets() async {
+    final spreadsheetId = LocalStorageService.getSpreadsheetId();
+    if (spreadsheetId == null || spreadsheetId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Configure y guarde primero la URL o ID de su hoja de cálculo.'),
+          backgroundColor: AppColors.statusAsignado,
+        ),
+      );
+      return;
+    }
+
+    final sheetsService = ref.read(googleSheetsServiceProvider);
+    if (!sheetsService.isSignedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Inicie sesión con Google para sincronizar el catálogo de aseguradoras.'),
+          backgroundColor: AppColors.statusAsignado,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSyncingAseguradoras = true);
+    try {
+      await ref.read(aseguradorasProvider.notifier).syncWithGoogleSheets(sheetsService, spreadsheetId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Catálogo de aseguradoras sincronizado exitosamente con Google Sheets.'),
+            backgroundColor: AppColors.statusConcluido,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al sincronizar aseguradoras: $e'),
+            backgroundColor: AppColors.statusCancelado,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncingAseguradoras = false);
+    }
+  }
+
+  // ==================== DIÁLOGOS DE AJUSTADORES ====================
 
   void _showAddAjustadorDialog() {
     final nombreCtrl = TextEditingController();
@@ -195,9 +303,13 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
             icon: const Icon(Icons.save_rounded, size: 16),
             onPressed: () {
               if (nombreCtrl.text.trim().isNotEmpty && telCtrl.text.trim().isNotEmpty) {
+                final sheetsService = ref.read(googleSheetsServiceProvider);
+                final spreadsheetId = LocalStorageService.getSpreadsheetId();
                 ref.read(ajustadoresProvider.notifier).addAjustador(
                       nombre: nombreCtrl.text.trim(),
                       telefonoWhatsApp: telCtrl.text.trim(),
+                      sheetsService: sheetsService,
+                      spreadsheetId: spreadsheetId,
                     );
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -215,7 +327,7 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
     );
   }
 
-  void _showEditAjustadorDialog(dynamic ajustador) {
+  void _showEditAjustadorDialog(AjustadorModel ajustador) {
     final nombreCtrl = TextEditingController(text: ajustador.nombre);
     final telCtrl = TextEditingController(text: ajustador.telefonoWhatsApp);
 
@@ -251,11 +363,17 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
             icon: const Icon(Icons.check_rounded, size: 16),
             onPressed: () {
               if (nombreCtrl.text.trim().isNotEmpty && telCtrl.text.trim().isNotEmpty) {
+                final sheetsService = ref.read(googleSheetsServiceProvider);
+                final spreadsheetId = LocalStorageService.getSpreadsheetId();
                 final actualizado = ajustador.copyWith(
                   nombre: nombreCtrl.text.trim(),
                   telefonoWhatsApp: telCtrl.text.trim(),
                 );
-                ref.read(ajustadoresProvider.notifier).updateAjustador(actualizado);
+                ref.read(ajustadoresProvider.notifier).updateAjustador(
+                      actualizado,
+                      sheetsService: sheetsService,
+                      spreadsheetId: spreadsheetId,
+                    );
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -272,7 +390,7 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
     );
   }
 
-  void _confirmDeleteAjustador(dynamic ajustador) {
+  void _confirmDeleteAjustador(AjustadorModel ajustador) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -285,7 +403,13 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.statusCancelado),
             onPressed: () {
-              ref.read(ajustadoresProvider.notifier).deleteAjustador(ajustador.id);
+              final sheetsService = ref.read(googleSheetsServiceProvider);
+              final spreadsheetId = LocalStorageService.getSpreadsheetId();
+              ref.read(ajustadoresProvider.notifier).deleteAjustador(
+                    ajustador.id,
+                    sheetsService: sheetsService,
+                    spreadsheetId: spreadsheetId,
+                  );
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -301,10 +425,193 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
     );
   }
 
+  // ==================== DIÁLOGOS DE ASEGURADORAS ====================
+
+  void _showAddAseguradoraDialog() {
+    final nombreCtrl = TextEditingController();
+    final prefijoCtrl = TextEditingController();
+    final telCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Agregar Aseguradora'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nombreCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Nombre Aseguradora (ej. Quálitas)',
+                prefixIcon: Icon(Icons.business_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: prefijoCtrl,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'Prefijo Habitual (ej. 04, INB, GNP)',
+                prefixIcon: Icon(Icons.tag_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: telCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Teléfono Cabina de Emergencia',
+                prefixIcon: Icon(Icons.phone_in_talk_outlined),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.save_rounded, size: 16),
+            onPressed: () {
+              if (nombreCtrl.text.trim().isNotEmpty) {
+                final sheetsService = ref.read(googleSheetsServiceProvider);
+                final spreadsheetId = LocalStorageService.getSpreadsheetId();
+                ref.read(aseguradorasProvider.notifier).addAseguradora(
+                      nombre: nombreCtrl.text.trim(),
+                      prefijoHabitual: prefijoCtrl.text.trim(),
+                      telefonoCabina: telCtrl.text.trim(),
+                      sheetsService: sheetsService,
+                      spreadsheetId: spreadsheetId,
+                    );
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Aseguradora ${nombreCtrl.text.trim()} agregada.'),
+                    backgroundColor: AppColors.statusConcluido,
+                  ),
+                );
+              }
+            },
+            label: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditAseguradoraDialog(AseguradoraModel aseguradora) {
+    final nombreCtrl = TextEditingController(text: aseguradora.nombre);
+    final prefijoCtrl = TextEditingController(text: aseguradora.prefijoHabitual);
+    final telCtrl = TextEditingController(text: aseguradora.telefonoCabina);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Editar Aseguradora: ${aseguradora.nombre}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nombreCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Nombre Aseguradora',
+                prefixIcon: Icon(Icons.business_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: prefijoCtrl,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'Prefijo Habitual',
+                prefixIcon: Icon(Icons.tag_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: telCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Teléfono Cabina de Emergencia',
+                prefixIcon: Icon(Icons.phone_in_talk_outlined),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.check_rounded, size: 16),
+            onPressed: () {
+              if (nombreCtrl.text.trim().isNotEmpty) {
+                final sheetsService = ref.read(googleSheetsServiceProvider);
+                final spreadsheetId = LocalStorageService.getSpreadsheetId();
+                final actualizada = AseguradoraModel(
+                  nombre: nombreCtrl.text.trim(),
+                  prefijoHabitual: prefijoCtrl.text.trim(),
+                  telefonoCabina: telCtrl.text.trim(),
+                );
+                ref.read(aseguradorasProvider.notifier).updateAseguradora(
+                      actualizada,
+                      sheetsService: sheetsService,
+                      spreadsheetId: spreadsheetId,
+                    );
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Aseguradora ${actualizada.nombre} actualizada.'),
+                    backgroundColor: AppColors.statusConcluido,
+                  ),
+                );
+              }
+            },
+            label: const Text('Actualizar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteAseguradora(AseguradoraModel aseguradora) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Eliminar Aseguradora?'),
+        content: Text(
+          'Se eliminará a "${aseguradora.nombre}" del catálogo local.\n\nEsta acción no afectará los siniestros ya registrados.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.statusCancelado),
+            onPressed: () {
+              final sheetsService = ref.read(googleSheetsServiceProvider);
+              final spreadsheetId = LocalStorageService.getSpreadsheetId();
+              ref.read(aseguradorasProvider.notifier).deleteAseguradora(
+                    aseguradora.nombre,
+                    sheetsService: sheetsService,
+                    spreadsheetId: spreadsheetId,
+                  );
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Aseguradora ${aseguradora.nombre} eliminada.'),
+                  backgroundColor: AppColors.statusCancelado,
+                ),
+              );
+            },
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final ajustadores = ref.watch(ajustadoresProvider);
+    final aseguradoras = ref.watch(aseguradorasProvider);
     final themeMode = ref.watch(themeProvider);
     final theme = Theme.of(context);
     final isDark = themeMode == ThemeMode.dark;
@@ -452,10 +759,31 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _buildSectionHeader('3. Catálogo de Ajustadores (${ajustadores.length})'),
-              TextButton.icon(
-                onPressed: _showAddAjustadorDialog,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Agregar'),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _isSyncingAjustadores ? null : _syncAjustadoresWithSheets,
+                    icon: _isSyncingAjustadores
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.sync_rounded, size: 16),
+                    label: const Text('Sincronizar', style: TextStyle(fontSize: 12)),
+                  ),
+                  const SizedBox(width: 6),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _showAddAjustadorDialog,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Agregar', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
               ),
             ],
           ),
@@ -546,7 +874,15 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
                               Switch(
                                 value: ajustadores[i].activo,
                                 activeThumbColor: AppColors.statusConcluido,
-                                onChanged: (_) => ref.read(ajustadoresProvider.notifier).toggleActivo(ajustadores[i].id),
+                                onChanged: (_) {
+                                  final sheetsService = ref.read(googleSheetsServiceProvider);
+                                  final spreadsheetId = LocalStorageService.getSpreadsheetId();
+                                  ref.read(ajustadoresProvider.notifier).toggleActivo(
+                                        ajustadores[i].id,
+                                        sheetsService: sheetsService,
+                                        spreadsheetId: spreadsheetId,
+                                      );
+                                },
                               ),
                             ],
                           ),
@@ -557,8 +893,137 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
           ),
           const SizedBox(height: 16),
 
-          // 4. Tema y Apariencia
-          _buildSectionHeader('4. Preferencias'),
+          // 4. Catálogo de Aseguradoras
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildSectionHeader('4. Catálogo de Aseguradoras (${aseguradoras.length})'),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _isSyncingAseguradoras ? null : _syncAseguradorasWithSheets,
+                    icon: _isSyncingAseguradoras
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.sync_rounded, size: 16),
+                    label: const Text('Sincronizar', style: TextStyle(fontSize: 12)),
+                  ),
+                  const SizedBox(width: 6),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _showAddAseguradoraDialog,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Agregar', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: AppColors.borderLight),
+            ),
+            child: aseguradoras.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          const Icon(Icons.business_outlined, size: 40, color: Colors.grey),
+                          const SizedBox(height: 8),
+                          const Text('No hay aseguradoras registradas.'),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _showAddAseguradoraDialog,
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('Agregar Aseguradora'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      for (int i = 0; i < aseguradoras.length; i++) ...[
+                        if (i > 0) const Divider(height: 1, indent: 64),
+                        ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: AppColors.primaryLight.withValues(alpha: 0.15),
+                            child: Text(
+                              aseguradoras[i].nombre.isNotEmpty ? aseguradoras[i].nombre[0].toUpperCase() : '?',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryLight,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            aseguradoras[i].nombre,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          subtitle: Row(
+                            children: [
+                              if (aseguradoras[i].prefijoHabitual.isNotEmpty) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryLight.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    aseguradoras[i].prefijoHabitual,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.primaryLight,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
+                              if (aseguradoras[i].telefonoCabina.isNotEmpty) ...[
+                                Icon(Icons.phone_outlined, size: 12, color: theme.hintColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  aseguradoras[i].telefonoCabina,
+                                  style: TextStyle(fontSize: 12, color: theme.hintColor),
+                                ),
+                              ],
+                            ],
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                                tooltip: 'Editar',
+                                onPressed: () => _showEditAseguradoraDialog(aseguradoras[i]),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.statusCancelado),
+                                tooltip: 'Eliminar',
+                                onPressed: () => _confirmDeleteAseguradora(aseguradoras[i]),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 16),
+
+          // 5. Tema y Apariencia
+          _buildSectionHeader('5. Preferencias'),
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(

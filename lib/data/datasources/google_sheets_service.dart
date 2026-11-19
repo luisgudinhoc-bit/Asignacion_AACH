@@ -174,7 +174,7 @@ class GoogleSheetsService {
       // Escribir encabezados si no existen
       await _writeHeadersIfEmpty(
         spreadsheetId,
-        '${SheetsConfig.tabSiniestros}!A1:U1',
+        '${SheetsConfig.tabSiniestros}!A1:K1',
         SheetsConfig.siniestrosHeaders,
       );
       await _writeHeadersIfEmpty(
@@ -258,22 +258,25 @@ class GoogleSheetsService {
     }
   }
 
-  /// Agrega un nuevo siniestro a la pestaña SINIESTROS
+  // ==================== OPERACIONES SINIESTROS (COLUMNAS A A F) ====================
+
+  /// Agrega un nuevo siniestro escribiendo estrictamente en las columnas A a F
+  /// Col A: FECHA | Col B: AJUSTADOR | Col C: ASEGURADORA | Col D: REPORTE | Col E: UBICACIÓN SIN. | Col F: VEHICULO
+  /// Respeta íntegramente las columnas G:K (ATENCION, CASETAS, OTROS, KILOMETRAJE, TOTAL)
   Future<int?> appendSiniestro(String spreadsheetId, SiniestroModel siniestro) async {
     _assertAuthenticated();
     final valueRange = sheets.ValueRange(
-      values: [siniestro.toSheetsRow()],
+      values: [siniestro.toSheetsRowAtoF()],
     );
 
     final response = await _sheetsApi!.spreadsheets.values.append(
       valueRange,
       spreadsheetId,
-      '${SheetsConfig.tabSiniestros}!A:U',
+      '${SheetsConfig.tabSiniestros}!A:F',
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
     );
 
-    // Extraer número de fila actualizado (ej: "SINIESTROS!A15:U15" -> 15)
     final updatedRange = response.updates?.updatedRange;
     if (updatedRange != null) {
       final match = RegExp(r'!A(\d+):').firstMatch(updatedRange);
@@ -284,16 +287,16 @@ class GoogleSheetsService {
     return null;
   }
 
-  /// Actualiza un siniestro existente en la hoja
+  /// Actualiza un siniestro existente en la hoja tocando únicamente las columnas A a F
   Future<void> updateSiniestro(String spreadsheetId, SiniestroModel siniestro) async {
     _assertAuthenticated();
 
-    // 1. Si ya se conoce el número de fila, actualizar directamente
+    // 1. Si ya se conoce el número de fila, actualizar únicamente A:F
     if (siniestro.rowNumberSheets != null && siniestro.rowNumberSheets! > 1) {
-      final range = '${SheetsConfig.tabSiniestros}!A${siniestro.rowNumberSheets}:U${siniestro.rowNumberSheets}';
+      final range = '${SheetsConfig.tabSiniestros}!A${siniestro.rowNumberSheets}:F${siniestro.rowNumberSheets}';
       final valueRange = sheets.ValueRange(
         range: range,
-        values: [siniestro.toSheetsRow()],
+        values: [siniestro.toSheetsRowAtoF()],
       );
       await _sheetsApi!.spreadsheets.values.update(
         valueRange,
@@ -304,31 +307,29 @@ class GoogleSheetsService {
       return;
     }
 
-    // 2. Si no se conoce la fila, buscar por ID o por Folio en la columna A y B
-    final idRange = await _sheetsApi!.spreadsheets.values.get(
+    // 2. Si no se conoce la fila, buscar por el Folio de Reporte en Columna D (REPORTE)
+    final colDRange = await _sheetsApi!.spreadsheets.values.get(
       spreadsheetId,
-      '${SheetsConfig.tabSiniestros}!A:B',
+      '${SheetsConfig.tabSiniestros}!D2:D',
     );
 
     int targetRow = -1;
-    if (idRange.values != null) {
-      for (int i = 0; i < idRange.values!.length; i++) {
-        final row = idRange.values![i];
-        final idCol = row.isNotEmpty ? row[0].toString() : '';
-        final folioCol = row.length > 1 ? row[1].toString() : '';
-
-        if (idCol == siniestro.id || (siniestro.folio.isNotEmpty && folioCol == siniestro.folio)) {
-          targetRow = i + 1; // 1-based index
+    if (colDRange.values != null && siniestro.folio.isNotEmpty) {
+      for (int i = 0; i < colDRange.values!.length; i++) {
+        final row = colDRange.values![i];
+        final reporteCol = row.isNotEmpty ? row[0].toString().trim() : '';
+        if (reporteCol.toLowerCase() == siniestro.folio.trim().toLowerCase()) {
+          targetRow = i + 2; // +2 por encabezado y 1-based index
           break;
         }
       }
     }
 
     if (targetRow > 1) {
-      final range = '${SheetsConfig.tabSiniestros}!A$targetRow:U$targetRow';
+      final range = '${SheetsConfig.tabSiniestros}!A$targetRow:F$targetRow';
       final valueRange = sheets.ValueRange(
         range: range,
-        values: [siniestro.toSheetsRow()],
+        values: [siniestro.toSheetsRowAtoF()],
       );
       await _sheetsApi!.spreadsheets.values.update(
         valueRange,
@@ -337,17 +338,17 @@ class GoogleSheetsService {
         valueInputOption: 'USER_ENTERED',
       );
     } else {
-      // Si no fue encontrado, anexarlo como nueva fila
+      // Si no fue encontrado, anexarlo como nueva fila en A:F
       await appendSiniestro(spreadsheetId, siniestro);
     }
   }
 
-  /// Lee todos los siniestros registrados en Google Sheets
+  /// Lee los siniestros registrados en Google Sheets (Columnas A a F)
   Future<List<SiniestroModel>> fetchSiniestros(String spreadsheetId) async {
     _assertAuthenticated();
     final response = await _sheetsApi!.spreadsheets.values.get(
       spreadsheetId,
-      '${SheetsConfig.tabSiniestros}!A2:U',
+      '${SheetsConfig.tabSiniestros}!A2:F',
     );
 
     final list = <SiniestroModel>[];
@@ -355,11 +356,111 @@ class GoogleSheetsService {
       for (int i = 0; i < response.values!.length; i++) {
         final row = response.values![i];
         if (row.isNotEmpty) {
-          final rowNumber = i + 2; // +2 por encabezado y 1-based index
+          final rowNumber = i + 2;
           list.add(SiniestroModel.fromSheetsRow(row, rowNumber: rowNumber));
         }
       }
     }
     return list;
+  }
+
+  // ==================== OPERACIONES AJUSTADORES ====================
+
+  /// Lee la lista completa de ajustadores desde la pestaña AJUSTADORES de Google Sheets
+  Future<List<AjustadorModel>> fetchAjustadores(String spreadsheetId) async {
+    _assertAuthenticated();
+    final response = await _sheetsApi!.spreadsheets.values.get(
+      spreadsheetId,
+      '${SheetsConfig.tabAjustadores}!A2:E',
+    );
+
+    final list = <AjustadorModel>[];
+    if (response.values != null) {
+      for (final row in response.values!) {
+        if (row.isNotEmpty) {
+          list.add(AjustadorModel.fromSheetsRow(row));
+        }
+      }
+    }
+    return list;
+  }
+
+  /// Sincroniza la lista completa de ajustadores con la pestaña AJUSTADORES de Google Sheets
+  Future<void> syncAjustadoresToSheets(
+    String spreadsheetId,
+    List<AjustadorModel> ajustadores,
+  ) async {
+    _assertAuthenticated();
+    final rows = ajustadores.map((a) => a.toSheetsRow()).toList();
+
+    try {
+      await _sheetsApi!.spreadsheets.values.clear(
+        sheets.ClearValuesRequest(),
+        spreadsheetId,
+        '${SheetsConfig.tabAjustadores}!A2:E',
+      );
+    } catch (e) {
+      debugPrint('Aviso al limpiar pestaña de ajustadores: $e');
+    }
+
+    if (rows.isNotEmpty) {
+      final range = '${SheetsConfig.tabAjustadores}!A2:E${rows.length + 1}';
+      await _sheetsApi!.spreadsheets.values.update(
+        sheets.ValueRange(values: rows),
+        spreadsheetId,
+        range,
+        valueInputOption: 'USER_ENTERED',
+      );
+    }
+  }
+
+  // ==================== OPERACIONES CATÁLOGO DE ASEGURADORAS ====================
+
+  /// Lee la lista completa de aseguradoras desde la pestaña CATALOGO_ASEGURADORAS
+  Future<List<AseguradoraModel>> fetchAseguradoras(String spreadsheetId) async {
+    _assertAuthenticated();
+    final response = await _sheetsApi!.spreadsheets.values.get(
+      spreadsheetId,
+      '${SheetsConfig.tabCatalogo}!A2:C',
+    );
+
+    final list = <AseguradoraModel>[];
+    if (response.values != null) {
+      for (final row in response.values!) {
+        if (row.isNotEmpty) {
+          list.add(AseguradoraModel.fromSheetsRow(row));
+        }
+      }
+    }
+    return list;
+  }
+
+  /// Sincroniza la lista de aseguradoras con la pestaña CATALOGO_ASEGURADORAS
+  Future<void> syncAseguradorasToSheets(
+    String spreadsheetId,
+    List<AseguradoraModel> aseguradoras,
+  ) async {
+    _assertAuthenticated();
+    final rows = aseguradoras.map((a) => a.toSheetsRow()).toList();
+
+    try {
+      await _sheetsApi!.spreadsheets.values.clear(
+        sheets.ClearValuesRequest(),
+        spreadsheetId,
+        '${SheetsConfig.tabCatalogo}!A2:C',
+      );
+    } catch (e) {
+      debugPrint('Aviso al limpiar pestaña de aseguradoras: $e');
+    }
+
+    if (rows.isNotEmpty) {
+      final range = '${SheetsConfig.tabCatalogo}!A2:C${rows.length + 1}';
+      await _sheetsApi!.spreadsheets.values.update(
+        sheets.ValueRange(values: rows),
+        spreadsheetId,
+        range,
+        valueInputOption: 'USER_ENTERED',
+      );
+    }
   }
 }

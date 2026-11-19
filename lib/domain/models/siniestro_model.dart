@@ -96,6 +96,27 @@ class SiniestroModel {
     return partes.join(', ');
   }
 
+  /// Ubicación formateada para la columna E (UBICACIÓN SIN.) de Google Sheets
+  String get ubicacionSheets {
+    final dir = direccionCompleta.isNotEmpty ? direccionCompleta : ubicacion;
+    if (linkMaps.isNotEmpty && !dir.contains(linkMaps)) {
+      if (dir.isEmpty) return linkMaps;
+      return '$dir • $linkMaps';
+    }
+    return dir;
+  }
+
+  /// Vehículo formateado para la columna F (VEHICULO) de Google Sheets
+  String get vehiculoSheets {
+    final partes = <String>[];
+    if (vehiculo.isNotEmpty) partes.add(vehiculo);
+    if (colorVehiculo.isNotEmpty && !vehiculo.toLowerCase().contains(colorVehiculo.toLowerCase())) {
+      partes.add(colorVehiculo);
+    }
+    if (placas.isNotEmpty) partes.add('($placas)');
+    return partes.join(' ');
+  }
+
   /// Copia el modelo con modificaciones
   SiniestroModel copyWith({
     String? id,
@@ -226,37 +247,104 @@ class SiniestroModel {
     );
   }
 
-  /// Convierte el registro a fila para Google Sheets API
-  List<dynamic> toSheetsRow() {
+  /// Convierte el registro a las columnas exactas A a F de la hoja de cálculo AACH
+  /// Col A: FECHA | Col B: AJUSTADOR | Col C: ASEGURADORA | Col D: REPORTE | Col E: UBICACIÓN SIN. | Col F: VEHICULO
+  List<dynamic> toSheetsRowAtoF() {
+    final dia = fechaAsignacion.day.toString().padLeft(2, '0');
+    final mes = fechaAsignacion.month.toString().padLeft(2, '0');
+    final anio = fechaAsignacion.year.toString();
+    final hora = fechaAsignacion.hour.toString().padLeft(2, '0');
+    final min = fechaAsignacion.minute.toString().padLeft(2, '0');
+    final fechaStr = '$dia/$mes/$anio $hora:$min';
+
     return [
-      id,
-      folio,
-      aseguradora,
-      ajustador,
-      estatus.displayName,
-      tipoEvento,
-      direccionCompleta,
-      linkMaps,
-      asegurado,
-      telefonoAsegurado,
-      vehiculo,
-      colorVehiculo,
-      placas,
-      poliza,
-      '${fechaAsignacion.day.toString().padLeft(2, '0')}/${fechaAsignacion.month.toString().padLeft(2, '0')}/${fechaAsignacion.year}',
-      '${fechaAsignacion.hour.toString().padLeft(2, '0')}:${fechaAsignacion.minute.toString().padLeft(2, '0')}',
-      fechaArribo != null ? fechaArribo!.toIso8601String() : '',
-      fechaConclusion != null ? fechaConclusion!.toIso8601String() : '',
-      tipoCierre ?? '',
-      observaciones,
-      DateTime.now().toIso8601String(),
+      fechaStr,        // Col A: FECHA
+      ajustador,       // Col B: AJUSTADOR
+      aseguradora,     // Col C: ASEGURADORA
+      folio,           // Col D: REPORTE
+      ubicacionSheets, // Col E: UBICACIÓN SIN.
+      vehiculoSheets,  // Col F: VEHICULO
     ];
   }
+
+  /// Alias de toSheetsRowAtoF para compatibilidad
+  List<dynamic> toSheetsRow() => toSheetsRowAtoF();
 
   /// Construye un modelo desde una fila leída de Google Sheets
   factory SiniestroModel.fromSheetsRow(List<dynamic> row, {int? rowNumber}) {
     String getCol(int index) => index < row.length ? row[index].toString().trim() : '';
 
+    // Si la hoja tiene el formato operativo AACH (Columnas A a F / A a K)
+    if (row.length <= 11) {
+      final fechaRaw = getCol(0);
+      DateTime parsedFecha = DateTime.now();
+      if (fechaRaw.isNotEmpty) {
+        // Intento parsear DD/MM/YYYY o DD/MM/YYYY HH:mm o ISO
+        try {
+          if (fechaRaw.contains('/')) {
+            final parts = fechaRaw.split(' ');
+            final dateParts = parts[0].split('/');
+            if (dateParts.length == 3) {
+              final d = int.parse(dateParts[0]);
+              final m = int.parse(dateParts[1]);
+              final y = int.parse(dateParts[2]);
+              int h = 0;
+              int min = 0;
+              if (parts.length > 1 && parts[1].contains(':')) {
+                final timeParts = parts[1].split(':');
+                h = int.parse(timeParts[0]);
+                min = int.parse(timeParts[1]);
+              }
+              parsedFecha = DateTime(y, m, d, h, min);
+            }
+          } else {
+            parsedFecha = DateTime.tryParse(fechaRaw) ?? DateTime.now();
+          }
+        } catch (_) {
+          parsedFecha = DateTime.now();
+        }
+      }
+
+      final rawUbicacion = getCol(4);
+      String ubi = rawUbicacion;
+      String maps = '';
+      if (rawUbicacion.contains('• http')) {
+        final splitUbi = rawUbicacion.split('•');
+        ubi = splitUbi[0].trim();
+        maps = splitUbi.sublist(1).join('•').trim();
+      } else if (rawUbicacion.startsWith('http')) {
+        maps = rawUbicacion;
+      }
+
+      final rawVehiculo = getCol(5);
+      String veh = rawVehiculo;
+      String pla = '';
+      if (rawVehiculo.contains('(') && rawVehiculo.endsWith(')')) {
+        final match = RegExp(r'^(.*?)\s*\((.*?)\)$').firstMatch(rawVehiculo);
+        if (match != null) {
+          veh = match.group(1)?.trim() ?? rawVehiculo;
+          pla = match.group(2)?.trim() ?? '';
+        }
+      }
+
+      return SiniestroModel(
+        id: const Uuid().v4(),
+        folio: getCol(3),
+        aseguradora: getCol(2).isNotEmpty ? getCol(2) : 'Inbursa',
+        ajustador: getCol(1),
+        estatus: SiniestroEstatus.asignado,
+        tipoEvento: 'Choque',
+        ubicacion: ubi,
+        linkMaps: maps,
+        vehiculo: veh,
+        placas: pla,
+        fechaAsignacion: parsedFecha,
+        sincronizado: true,
+        rowNumberSheets: rowNumber,
+      );
+    }
+
+    // Formato legado extendido (> 11 columnas)
     return SiniestroModel(
       id: getCol(0).isNotEmpty ? getCol(0) : const Uuid().v4(),
       folio: getCol(1),

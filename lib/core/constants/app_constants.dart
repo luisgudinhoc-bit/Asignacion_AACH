@@ -7,13 +7,19 @@ class AppConstants {
   // Hive Boxes
   static const String siniestrosBox = 'siniestros_box_v1';
   static const String ajustadoresBox = 'ajustadores_box_v1';
+  static const String aseguradorasBox = 'aseguradoras_box_v1';
   static const String syncQueueBox = 'sync_queue_box_v1';
   static const String appSettingsBox = 'app_settings_box_v1';
 
   // Catálogo oficial de Aseguradoras del Despacho AACH
   static const List<String> defaultAseguradoras = [
     'Inbursa',
+    'Quálitas',
     'Mapfre',
+    'GNP Seguros',
+    'AXA Seguros',
+    'HDI Seguros',
+    'Chubb Seguros',
     'Crabi',
     'SPT Seguros',
     'Otra Compañía',

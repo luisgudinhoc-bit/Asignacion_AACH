@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../core/constants/app_constants.dart';
 import '../../core/services/export_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/datasources/local_storage_service.dart';
 import '../providers/ajustador_provider.dart';
+import '../providers/aseguradora_provider.dart';
 import '../providers/metrics_provider.dart';
 import '../widgets/metric_summary_card.dart';
 
@@ -19,6 +19,7 @@ class MetricasCorteScreen extends ConsumerWidget {
     final metrics = ref.watch(calculatedMetricsProvider);
     final siniestros = ref.watch(metricsSiniestrosProvider);
     final ajustadores = ref.read(ajustadoresProvider);
+    final aseguradoras = ref.watch(aseguradorasNamesProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -99,7 +100,7 @@ class MetricasCorteScreen extends ConsumerWidget {
                             labelText: 'Aseguradora',
                             contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                           ),
-                          items: ['Todas', ...AppConstants.defaultAseguradoras].map((cia) {
+                          items: ['Todas', ...aseguradoras].map((cia) {
                             return DropdownMenuItem(value: cia, child: Text(cia, style: const TextStyle(fontSize: 13)));
                           }).toList(),
                           onChanged: (val) {

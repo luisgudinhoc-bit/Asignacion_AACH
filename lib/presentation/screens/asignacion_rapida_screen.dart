@@ -10,6 +10,7 @@ import '../../domain/services/arco_norte_service.dart';
 import '../../domain/services/location_resolver_service.dart';
 import '../../domain/services/whatsapp_parser_service.dart';
 import '../providers/ajustador_provider.dart';
+import '../providers/aseguradora_provider.dart';
 import '../providers/siniestro_provider.dart';
 import '../widgets/cabina_parser_card.dart';
 
@@ -444,6 +445,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final ajustadores = ref.watch(activeAjustadoresProvider);
+    final aseguradoras = ref.watch(aseguradorasNamesProvider);
     final isEditing = widget.siniestroToEdit != null;
 
     return Scaffold(
@@ -475,7 +477,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
-                  children: AppConstants.defaultAseguradoras.map((cia) {
+                  children: aseguradoras.map((cia) {
                     final isSelected = _selectedAseguradora == cia;
                     final ciaColor = AppColors.getAseguradoraColor(cia);
                     return Padding(

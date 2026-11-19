@@ -4,30 +4,22 @@ class SheetsConfig {
   static const String tabAjustadores = 'AJUSTADORES';
   static const String tabCatalogo = 'CATALOGO_ASEGURADORAS';
 
+  /// Encabezados de la hoja maestra de Siniestros (Columnas A a K de la hoja operativa AACH)
   static const List<String> siniestrosHeaders = [
-    'ID_SISTEMA',
-    'FOLIO_SINIESTRO',
-    'ASEGURADORA',
-    'AJUSTADOR',
-    'ESTATUS',
-    'TIPO_EVENTO',
-    'UBICACION',
-    'LINK_MAPS',
-    'NOMBRE_ASEGURADO',
-    'TELEFONO_ASEGURADO',
-    'VEHICULO_MARCA_SUBMARCA',
-    'COLOR_VEHICULO',
-    'PLACAS',
-    'POLIZA',
-    'FECHA_ASIGNACION',
-    'HORA_ASIGNACION',
-    'FECHA_ARRIBO',
-    'FECHA_CONCLUSION',
-    'TIPO_CIERRE',
-    'OBSERVACIONES',
-    'ULTIMA_ACTUALIZACION',
+    'FECHA',          // Col A
+    'AJUSTADOR',      // Col B
+    'ASEGURADORA',    // Col C
+    'REPORTE',        // Col D
+    'UBICACIÓN SIN.', // Col E
+    'VEHICULO',       // Col F
+    'ATENCION',       // Col G (para cabina / liquidación)
+    'CASETAS',        // Col H (gastos)
+    'OTROS',          // Col I (gastos adicionales)
+    'KILOMETRAJE',    // Col J (kilometraje recorrido)
+    'TOTAL',          // Col K (total liquidado)
   ];
 
+  /// Encabezados de la pestaña de Ajustadores
   static const List<String> ajustadoresHeaders = [
     'ID_AJUSTADOR',
     'NOMBRE',
@@ -36,6 +28,7 @@ class SheetsConfig {
     'FOLIOS_ATENDIDOS_MES',
   ];
 
+  /// Encabezados de la pestaña de Catálogo de Aseguradoras
   static const List<String> catalogoHeaders = [
     'NOMBRE_ASEGURADORA',
     'PREFIJO_HABITUAL',
