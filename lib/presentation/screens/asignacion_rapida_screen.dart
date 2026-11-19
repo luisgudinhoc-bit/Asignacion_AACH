@@ -11,8 +11,10 @@ import '../../domain/services/location_resolver_service.dart';
 import '../../domain/services/whatsapp_parser_service.dart';
 import '../providers/ajustador_provider.dart';
 import '../providers/aseguradora_provider.dart';
+import '../providers/auth_provider.dart';
 import '../providers/siniestro_provider.dart';
 import '../widgets/cabina_parser_card.dart';
+import 'sync_status_screen.dart';
 
 enum SendMode { none, ajustador, grupo }
 
@@ -399,15 +401,39 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
       }
     }
 
+    final sheetsService = ref.read(googleSheetsServiceProvider);
+    final isConnected = sheetsService.isSignedIn;
+
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isEditing
-              ? '✅ Siniestro ${siniestroFinal.folio} actualizado correctamente.'
-              : '✅ Siniestro ${siniestroFinal.folio} registrado correctamente.'),
-          backgroundColor: AppColors.statusConcluido,
-        ),
-      );
+      if (isConnected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isEditing
+                ? '✅ Siniestro ${siniestroFinal.folio} actualizado y sincronizado en Google Sheets.'
+                : '✅ Siniestro ${siniestroFinal.folio} registrado y sincronizado en Google Sheets.'),
+            backgroundColor: AppColors.statusConcluido,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 6),
+            content: Text(isEditing
+                ? '⚠️ Siniestro ${siniestroFinal.folio} actualizado localmente. (Sin vincular: inicia sesión con Google en Ajustes para enviarlo al Excel).'
+                : '⚠️ Siniestro ${siniestroFinal.folio} guardado localmente. (Sin vincular: inicia sesión con Google en Ajustes para enviarlo al Excel).'),
+            backgroundColor: AppColors.statusAsignado,
+            action: SnackBarAction(
+              label: 'Ver cola',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SyncStatusScreen()),
+                );
+              },
+            ),
+          ),
+        );
+      }
 
       if (widget.isStandaloneScreen || isEditing) {
         Navigator.of(context).pop();

@@ -171,9 +171,11 @@ class LocalStorageService {
     return trimmed;
   }
 
-  static String? getSpreadsheetId() {
+  static String getSpreadsheetId() {
     final stored = _settingsBox.get('spreadsheet_id') as String?;
-    if (stored == null || stored.isEmpty) return null;
+    if (stored == null || stored.trim().isEmpty) {
+      return AppConstants.defaultSpreadsheetId;
+    }
     return sanitizeSpreadsheetId(stored);
   }
 

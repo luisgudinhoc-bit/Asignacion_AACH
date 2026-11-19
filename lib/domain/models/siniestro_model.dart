@@ -96,14 +96,15 @@ class SiniestroModel {
     return partes.join(', ');
   }
 
-  /// Ubicación formateada para la columna E (UBICACIÓN SIN.) de Google Sheets
+  /// Ubicación formateada para la columna E (UBICACIÓN SIN.) de Google Sheets: estrictamente MUNICIPIO
   String get ubicacionSheets {
-    final dir = direccionCompleta.isNotEmpty ? direccionCompleta : ubicacion;
-    if (linkMaps.isNotEmpty && !dir.contains(linkMaps)) {
-      if (dir.isEmpty) return linkMaps;
-      return '$dir • $linkMaps';
+    if (municipio.trim().isNotEmpty) {
+      return municipio.trim();
     }
-    return dir;
+    if (direccionCompleta.trim().isNotEmpty) {
+      return direccionCompleta.trim();
+    }
+    return ubicacion.trim();
   }
 
   /// Vehículo formateado para la columna F (VEHICULO) de Google Sheets
@@ -248,21 +249,19 @@ class SiniestroModel {
   }
 
   /// Convierte el registro a las columnas exactas A a F de la hoja de cálculo AACH
-  /// Col A: FECHA | Col B: AJUSTADOR | Col C: ASEGURADORA | Col D: REPORTE | Col E: UBICACIÓN SIN. | Col F: VEHICULO
+  /// Col A: FECHA (DD/MM/YYYY) | Col B: AJUSTADOR | Col C: ASEGURADORA | Col D: REPORTE | Col E: UBICACIÓN SIN. (MUNICIPIO) | Col F: VEHICULO
   List<dynamic> toSheetsRowAtoF() {
     final dia = fechaAsignacion.day.toString().padLeft(2, '0');
     final mes = fechaAsignacion.month.toString().padLeft(2, '0');
     final anio = fechaAsignacion.year.toString();
-    final hora = fechaAsignacion.hour.toString().padLeft(2, '0');
-    final min = fechaAsignacion.minute.toString().padLeft(2, '0');
-    final fechaStr = '$dia/$mes/$anio $hora:$min';
+    final fechaStr = '$dia/$mes/$anio';
 
     return [
-      fechaStr,        // Col A: FECHA
+      fechaStr,        // Col A: FECHA (DD/MM/YYYY)
       ajustador,       // Col B: AJUSTADOR
       aseguradora,     // Col C: ASEGURADORA
       folio,           // Col D: REPORTE
-      ubicacionSheets, // Col E: UBICACIÓN SIN.
+      ubicacionSheets, // Col E: UBICACIÓN SIN. (MUNICIPIO)
       vehiculoSheets,  // Col F: VEHICULO
     ];
   }
