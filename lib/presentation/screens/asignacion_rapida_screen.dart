@@ -13,13 +13,17 @@ import '../providers/ajustador_provider.dart';
 import '../providers/siniestro_provider.dart';
 import '../widgets/cabina_parser_card.dart';
 
-/// Formulario de Asignación Rápida con optimización para captura ágil con una mano
+enum SendMode { none, ajustador, grupo }
+
+/// Formulario de Asignación Rápida y Edición de Siniestros
 class AsignacionRapidaScreen extends ConsumerStatefulWidget {
   final bool isStandaloneScreen;
+  final SiniestroModel? siniestroToEdit;
 
   const AsignacionRapidaScreen({
     super.key,
     this.isStandaloneScreen = false,
+    this.siniestroToEdit,
   });
 
   @override
@@ -60,16 +64,45 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ajustadores = ref.read(activeAjustadoresProvider);
-      if (ajustadores.isNotEmpty && _selectedAjustadorNombre.isEmpty) {
-        setState(() {
-          _selectedAjustadorId = ajustadores.first.id;
-          _selectedAjustadorNombre = ajustadores.first.nombre;
-          _selectedAjustadorTelefono = ajustadores.first.telefonoWhatsApp;
-        });
+    if (widget.siniestroToEdit != null) {
+      final s = widget.siniestroToEdit!;
+      _folioController.text = s.folio;
+      _selectedAseguradora = s.aseguradora;
+      _selectedAjustadorNombre = s.ajustador;
+      if (s.tipoEvento.contains(':')) {
+        _selectedTipoEvento = s.tipoEvento.split(':').first.trim();
+        _otroTipoEventoController.text = s.tipoEvento.split(':').last.trim();
+      } else {
+        _selectedTipoEvento = s.tipoEvento;
       }
-    });
+      _aseguradoController.text = s.asegurado;
+      _telefonoController.text = s.telefonoAsegurado;
+      _vehiculoController.text = s.vehiculo;
+      _colorController.text = s.colorVehiculo;
+      _placasController.text = s.placas;
+      _polizaController.text = s.poliza;
+      _municipioController.text = s.municipio;
+      _estadoController.text = s.estado;
+      _referenciasController.text = s.referencias.isNotEmpty ? s.referencias : s.ubicacion;
+      _mapsController.text = s.linkMaps;
+      _observacionesController.text = s.observaciones;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ajustadores = ref.read(activeAjustadoresProvider);
+        final match = ajustadores.where(
+          (a) =>
+              a.nombre.toLowerCase() == s.ajustador.toLowerCase() ||
+              s.ajustador.toLowerCase().contains(a.nombre.toLowerCase()) ||
+              a.nombre.toLowerCase().contains(s.ajustador.toLowerCase()),
+        ).firstOrNull;
+        if (match != null && mounted) {
+          setState(() {
+            _selectedAjustadorId = match.id;
+            _selectedAjustadorTelefono = match.telefonoWhatsApp;
+          });
+        }
+      });
+    }
   }
 
   @override
@@ -166,7 +199,6 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
 
       if (parsed.linkMaps != null && parsed.linkMaps!.isNotEmpty) {
         _mapsController.text = parsed.linkMaps!;
-        // Resolver automáticamente municipio, estado y calle desde el link de Maps
         _resolveLocationFromMaps(parsed.linkMaps!);
       }
       if (parsed.tipoEvento != null && parsed.tipoEvento!.isNotEmpty) {
@@ -183,7 +215,8 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
       if (parsed.ajustador != null && parsed.ajustador!.isNotEmpty) {
         final ajustadores = ref.read(activeAjustadoresProvider);
         final match = ajustadores.where(
-          (a) => a.nombre.toLowerCase().contains(parsed.ajustador!.toLowerCase()) ||
+          (a) =>
+              a.nombre.toLowerCase().contains(parsed.ajustador!.toLowerCase()) ||
               parsed.ajustador!.toLowerCase().contains(a.nombre.toLowerCase()),
         ).firstOrNull;
         if (match != null) {
@@ -204,22 +237,22 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     }
   }
 
-  Future<void> _fetchCurrentGps() async {
+  Future<void> _getCurrentLocation() async {
     setState(() => _isGettingGps = true);
     try {
-      final loc = await LocationService.getCurrentLocation();
-      if (loc != null) {
+      final pos = await LocationService.getCurrentLocation();
+      if (pos != null) {
+        final url = pos.mapsUrl;
         setState(() {
-          if (_referenciasController.text.isEmpty) {
-            _referenciasController.text = loc.displayText;
-          }
-          _mapsController.text = loc.mapsUrl;
+          _mapsController.text = url;
         });
+        _resolveLocationFromMaps(url);
+      } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('📍 Coordenadas GPS fijadas exitosamente.'),
-              backgroundColor: AppColors.statusConcluido,
+              content: Text('No se pudo obtener la ubicación GPS.'),
+              backgroundColor: AppColors.statusCancelado,
             ),
           );
         }
@@ -235,88 +268,147 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     }
   }
 
-  Future<void> _saveAndSend({required bool sendWhatsApp}) async {
-    if (!_formKey.currentState!.validate()) {
+  bool get _hasAnyInfo =>
+      _folioController.text.trim().isNotEmpty ||
+      _aseguradoController.text.trim().isNotEmpty ||
+      _telefonoController.text.trim().isNotEmpty ||
+      _vehiculoController.text.trim().isNotEmpty ||
+      _colorController.text.trim().isNotEmpty ||
+      _municipioController.text.trim().isNotEmpty ||
+      _referenciasController.text.trim().isNotEmpty ||
+      _mapsController.text.trim().isNotEmpty ||
+      _observacionesController.text.trim().isNotEmpty ||
+      _selectedAjustadorNombre.isNotEmpty;
+
+  Future<void> _saveAndSend({required SendMode mode}) async {
+    // Para registrar no es obligatorio el siniestro, basta con meter algo de información
+    if (!_hasAnyInfo) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Por favor complete los campos obligatorios.'),
+          content: Text('Ingrese al menos algún dato del siniestro (ubicación, vehículo, folio, notas) para registrar.'),
           backgroundColor: AppColors.statusCancelado,
         ),
       );
       return;
     }
 
-    if (_selectedAjustadorNombre.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Debe seleccionar un ajustador activo.'),
-          backgroundColor: AppColors.statusCancelado,
-        ),
-      );
-      return;
+    // Si se eligió enviar directo al ajustador, se valida que haya un ajustador con teléfono
+    if (mode == SendMode.ajustador) {
+      if (_selectedAjustadorTelefono.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Para envío directo seleccione un ajustador con teléfono, o use "Enviar al Grupo".'),
+            backgroundColor: AppColors.statusAsignado,
+          ),
+        );
+        return;
+      }
     }
 
     final now = DateTime.now();
+
+    // Folio flexible: si está vacío se autogenera S/F con marca temporal
+    final rawFolio = _folioController.text.trim();
+    final folioFinal = rawFolio.isNotEmpty
+        ? rawFolio.toUpperCase()
+        : 'S/F-${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+
+    final ajustadorFinal = _selectedAjustadorNombre.isNotEmpty
+        ? _selectedAjustadorNombre
+        : 'Sin Asignar';
+
     final tipoEventoFinal = ((_selectedTipoEvento == 'Diverso' || _selectedTipoEvento == 'Otro') &&
             _otroTipoEventoController.text.trim().isNotEmpty)
         ? '$_selectedTipoEvento: ${_otroTipoEventoController.text.trim()}'
         : _selectedTipoEvento;
 
-    final nuevoSiniestro = SiniestroModel(
-      folio: _folioController.text.trim().toUpperCase(),
-      aseguradora: _selectedAseguradora,
-      ajustador: _selectedAjustadorNombre,
-      estatus: SiniestroEstatus.asignado,
-      tipoEvento: tipoEventoFinal,
-      municipio: _municipioController.text.trim(),
-      estado: _estadoController.text.trim(),
-      referencias: _referenciasController.text.trim(),
-      ubicacion: _referenciasController.text.trim(),
-      linkMaps: _mapsController.text.trim(),
-      asegurado: _aseguradoController.text.trim(),
-      telefonoAsegurado: _telefonoController.text.trim(),
-      vehiculo: _vehiculoController.text.trim(),
-      colorVehiculo: _colorController.text.trim(),
-      placas: _placasController.text.trim().toUpperCase(),
-      poliza: _polizaController.text.trim(),
-      fechaAsignacion: now,
-      observaciones: _observacionesController.text.trim(),
-    );
+    final isEditing = widget.siniestroToEdit != null;
+    SiniestroModel siniestroFinal;
 
-    // Guardar localmente y encolar a Sheets
-    await ref.read(siniestroListProvider.notifier).createSiniestro(nuevoSiniestro);
+    if (isEditing) {
+      final original = widget.siniestroToEdit!;
+      siniestroFinal = original.copyWith(
+        folio: folioFinal,
+        aseguradora: _selectedAseguradora,
+        ajustador: ajustadorFinal,
+        tipoEvento: tipoEventoFinal,
+        municipio: _municipioController.text.trim(),
+        estado: _estadoController.text.trim(),
+        referencias: _referenciasController.text.trim(),
+        ubicacion: _referenciasController.text.trim(),
+        linkMaps: _mapsController.text.trim(),
+        asegurado: _aseguradoController.text.trim(),
+        telefonoAsegurado: _telefonoController.text.trim(),
+        vehiculo: _vehiculoController.text.trim(),
+        colorVehiculo: _colorController.text.trim(),
+        placas: _placasController.text.trim().toUpperCase(),
+        poliza: _polizaController.text.trim(),
+        observaciones: _observacionesController.text.trim(),
+        ultimaActualizacion: now,
+      );
+      await ref.read(siniestroListProvider.notifier).updateSiniestro(siniestroFinal);
+    } else {
+      siniestroFinal = SiniestroModel(
+        folio: folioFinal,
+        aseguradora: _selectedAseguradora,
+        ajustador: ajustadorFinal,
+        estatus: SiniestroEstatus.asignado,
+        tipoEvento: tipoEventoFinal,
+        municipio: _municipioController.text.trim(),
+        estado: _estadoController.text.trim(),
+        referencias: _referenciasController.text.trim(),
+        ubicacion: _referenciasController.text.trim(),
+        linkMaps: _mapsController.text.trim(),
+        asegurado: _aseguradoController.text.trim(),
+        telefonoAsegurado: _telefonoController.text.trim(),
+        vehiculo: _vehiculoController.text.trim(),
+        colorVehiculo: _colorController.text.trim(),
+        placas: _placasController.text.trim().toUpperCase(),
+        poliza: _polizaController.text.trim(),
+        fechaAsignacion: now,
+        observaciones: _observacionesController.text.trim(),
+      );
+      await ref.read(siniestroListProvider.notifier).createSiniestro(siniestroFinal);
+    }
 
-    if (sendWhatsApp) {
+    // Envío a WhatsApp si fue solicitado
+    if (mode == SendMode.ajustador || mode == SendMode.grupo) {
       final msg = WhatsAppService.buildAsignacionMessage(
-        folio: nuevoSiniestro.folio,
-        aseguradora: nuevoSiniestro.aseguradora,
-        ajustador: nuevoSiniestro.ajustador,
-        tipoEvento: nuevoSiniestro.tipoEvento,
-        vehiculo: nuevoSiniestro.vehiculo,
-        placas: nuevoSiniestro.placas,
-        asegurado: nuevoSiniestro.asegurado,
-        telefonoAsegurado: nuevoSiniestro.telefonoAsegurado,
-        ubicacion: nuevoSiniestro.direccionCompleta,
-        linkMaps: nuevoSiniestro.linkMaps,
-        observaciones: nuevoSiniestro.observaciones,
+        folio: siniestroFinal.folio,
+        aseguradora: siniestroFinal.aseguradora,
+        ajustador: siniestroFinal.ajustador,
+        tipoEvento: siniestroFinal.tipoEvento,
+        vehiculo: siniestroFinal.vehiculo,
+        placas: siniestroFinal.placas,
+        asegurado: siniestroFinal.asegurado,
+        telefonoAsegurado: siniestroFinal.telefonoAsegurado,
+        ubicacion: siniestroFinal.direccionCompleta,
+        linkMaps: siniestroFinal.linkMaps,
+        observaciones: siniestroFinal.observaciones,
         fechaHora: now,
       );
 
-      await WhatsAppService.sendWhatsAppMessage(
-        phone: _selectedAjustadorTelefono,
-        message: msg,
-      );
+      if (mode == SendMode.ajustador) {
+        await WhatsAppService.sendWhatsAppMessage(
+          phone: _selectedAjustadorTelefono,
+          message: msg,
+        );
+      } else if (mode == SendMode.grupo) {
+        await WhatsAppService.shareToWhatsAppGeneric(msg);
+      }
     }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Siniestro ${nuevoSiniestro.folio} registrado correctamente.'),
+          content: Text(isEditing
+              ? '✅ Siniestro ${siniestroFinal.folio} actualizado correctamente.'
+              : '✅ Siniestro ${siniestroFinal.folio} registrado correctamente.'),
           backgroundColor: AppColors.statusConcluido,
         ),
       );
 
-      if (widget.isStandaloneScreen) {
+      if (widget.isStandaloneScreen || isEditing) {
         Navigator.of(context).pop();
       } else {
         _resetForm();
@@ -341,21 +433,28 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     setState(() {
       _selectedTipoEvento = 'Choque';
       _selectedAseguradora = 'Inbursa';
+      _selectedAjustadorId = null;
+      _selectedAjustadorNombre = '';
+      _selectedAjustadorTelefono = '';
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final ajustadores = ref.watch(activeAjustadoresProvider);
+    final isEditing = widget.siniestroToEdit != null;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Nueva Asignación Rápida',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        title: Text(
+          isEditing
+              ? 'Editar Siniestro: ${widget.siniestroToEdit!.folio}'
+              : 'Nueva Asignación Rápida',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        leading: widget.isStandaloneScreen
+        leading: (widget.isStandaloneScreen || isEditing)
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => Navigator.of(context).pop(),
@@ -371,7 +470,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               // 1. Parser Inteligente de Cabina y Reenvíos WhatsApp
               CabinaParserCard(onApplyParsed: _applyParsedData),
 
-              // 2. Selector Rápido de Aseguradora (Inbursa, Mapfre, Crabi, SPT, Otra Compañía)
+              // 2. Selector Rápido de Aseguradora
               _buildSectionTitle('1. Aseguradora'),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -382,17 +481,24 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                     return Padding(
                       padding: const EdgeInsets.only(right: 8.0),
                       child: ChoiceChip(
-                        label: Text(cia),
-                        selected: isSelected,
-                        selectedColor: ciaColor.withValues(alpha: 0.2),
-                        side: BorderSide(
-                          color: isSelected ? ciaColor : Colors.grey.shade400,
-                          width: isSelected ? 2.0 : 1.0,
+                        label: Text(
+                          cia,
+                          style: TextStyle(
+                            color: isSelected
+                                ? Colors.white
+                                : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
-                        labelStyle: TextStyle(
-                          color: isSelected ? ciaColor : theme.textTheme.bodyMedium?.color,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          fontSize: 13,
+                        selected: isSelected,
+                        selectedColor: ciaColor,
+                        backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+                        side: BorderSide(
+                          color: isSelected
+                              ? ciaColor
+                              : (isDark ? AppColors.borderDark : Colors.grey.shade400),
+                          width: isSelected ? 2.0 : 1.0,
                         ),
                         onSelected: (val) {
                           if (val) setState(() => _selectedAseguradora = cia);
@@ -404,13 +510,13 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               ),
               const SizedBox(height: 16),
 
-              // 3. Folio / Siniestro con Pegado Directo
-              _buildSectionTitle('2. Folio / Siniestro'),
+              // 3. Folio / Siniestro con Pegado Directo (No obligatorio)
+              _buildSectionTitle('2. Folio / Siniestro (Opcional - Si está vacío asigna S/F)'),
               TextFormField(
                 controller: _folioController,
                 textCapitalization: TextCapitalization.characters,
                 decoration: InputDecoration(
-                  hintText: 'Ej. 3059238 / INB-998877',
+                  hintText: 'Ej. 3059238 / INB-998877 (o déjalo vacío si cabina aún no lo da)',
                   prefixIcon: const Icon(Icons.confirmation_number_outlined),
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.content_paste_go_rounded, color: AppColors.primaryLight),
@@ -418,17 +524,11 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                     onPressed: _pasteFolioFromClipboard,
                   ),
                 ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) {
-                    return 'El número de folio o siniestro es requerido';
-                  }
-                  return null;
-                },
               ),
               const SizedBox(height: 16),
 
-              // 4. Ajustador Asignado (ChoiceChips)
-              _buildSectionTitle('3. Ajustador Asignado'),
+              // 4. Ajustador Asignado (ChoiceChips con contraste garantizado)
+              _buildSectionTitle('3. Ajustador Asignado (Toca para seleccionar o cambiar)'),
               ajustadores.isEmpty
                   ? const Text(
                       'No hay ajustadores activos. Agréguelos en Ajustes.',
@@ -442,65 +542,84 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                         return ChoiceChip(
                           avatar: CircleAvatar(
                             backgroundColor: isSelected
-                                ? AppColors.primary
-                                : Colors.grey.shade400,
+                                ? Colors.white
+                                : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
                             child: Text(
-                              aj.nombre[0].toUpperCase(),
-                              style: const TextStyle(fontSize: 11, color: Colors.white),
+                              aj.nombre.isNotEmpty ? aj.nombre[0].toUpperCase() : '?',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : (isDark ? Colors.white : Colors.black87),
+                              ),
                             ),
                           ),
-                          label: Text(aj.nombre),
+                          label: Text(
+                            aj.nombre,
+                            style: TextStyle(
+                              color: isSelected
+                                  ? Colors.white
+                                  : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
                           selected: isSelected,
+                          selectedColor: AppColors.primary,
+                          backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+                          side: BorderSide(
+                            color: isSelected
+                                ? AppColors.primary
+                                : (isDark ? AppColors.borderDark : AppColors.borderLight),
+                            width: isSelected ? 1.5 : 1.0,
+                          ),
                           onSelected: (val) {
-                            if (val) {
-                              setState(() {
+                            setState(() {
+                              if (val) {
                                 _selectedAjustadorId = aj.id;
                                 _selectedAjustadorNombre = aj.nombre;
                                 _selectedAjustadorTelefono = aj.telefonoWhatsApp;
-                              });
-                            }
+                              } else {
+                                _selectedAjustadorId = null;
+                                _selectedAjustadorNombre = '';
+                                _selectedAjustadorTelefono = '';
+                              }
+                            });
                           },
                         );
                       }).toList(),
                     ),
               const SizedBox(height: 16),
 
-              // 4. Ubicación y Referencias (Municipio, Estado, Referencias, Maps opcional)
+              // 5. Ubicación y Referencias
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   _buildSectionTitle('4. Ubicación y Referencias'),
                   TextButton.icon(
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      visualDensity: VisualDensity.compact,
-                      foregroundColor: AppColors.primaryLight,
-                    ),
-                    icon: const Icon(Icons.alt_route_rounded, size: 16),
+                    onPressed: () => _showArcoNorteCatalog(context),
+                    icon: const Icon(Icons.alt_route_rounded, size: 16, color: AppColors.primaryLight),
                     label: const Text('Tramos Arco Norte (Km)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    onPressed: () => _showArcoNorteModal(context),
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
                   ),
                 ],
               ),
               Row(
                 children: [
                   Expanded(
-                    flex: 1,
                     child: TextFormField(
                       controller: _municipioController,
-                      textCapitalization: TextCapitalization.words,
                       decoration: const InputDecoration(
-                        hintText: 'Municipio (ej: Pachuca)',
+                        hintText: 'Municipio / Localidad',
                         prefixIcon: Icon(Icons.location_city_outlined),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    flex: 1,
                     child: TextFormField(
                       controller: _estadoController,
-                      textCapitalization: TextCapitalization.words,
                       decoration: const InputDecoration(
                         hintText: 'Estado (ej: Hidalgo)',
                         prefixIcon: Icon(Icons.map_outlined),
@@ -513,120 +632,49 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               TextFormField(
                 controller: _referenciasController,
                 maxLines: 2,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: 'Referencias: calle, carretera, autopista, cerradas, km...',
-                  prefixIcon: const Icon(Icons.directions_outlined),
-                  suffixIcon: IconButton(
-                    icon: _isGettingGps
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.my_location_rounded, color: AppColors.primaryLight),
-                    tooltip: 'Insertar GPS actual',
-                    onPressed: _isGettingGps ? null : _fetchCurrentGps,
-                  ),
+                decoration: const InputDecoration(
+                  hintText: 'Calle, esquina, colonia o tramo carretero...',
+                  prefixIcon: Icon(Icons.navigation_outlined),
                 ),
-              ),
-              // Banner reactivo de Arco Norte si se detecta un kilometraje
-              Builder(
-                builder: (context) {
-                  final textToCheck = '${_referenciasController.text} ${_municipioController.text}';
-                  final match = ArcoNorteService.findKmInText(textToCheck);
-                  if (match == null) return const SizedBox.shrink();
-
-                  return Container(
-                    margin: const EdgeInsets.only(top: 8, bottom: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryLight.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.primaryLight.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.alt_route_rounded, color: AppColors.primaryLight, size: 26),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '🛣️ Arco Norte: Tramo ${match.localidad}',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primaryLight),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Km ${match.kilometro.toStringAsFixed(0)} • CP ${match.codigoPostal} • ${match.estado}',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryLight,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _municipioController.text = match.localidad;
-                              _estadoController.text = match.estado;
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('🛣️ Ubicación ajustada a Tramo ${match.localidad} (${match.estado})'),
-                                backgroundColor: AppColors.statusConcluido,
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.check, size: 14),
-                          label: const Text('Aplicar', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  );
-                },
               ),
               const SizedBox(height: 8),
+
+              // Enlace de Google Maps (Opcional)
               TextFormField(
                 controller: _mapsController,
-                onChanged: (text) {
-                  if (text.contains('maps') && text.contains('http')) {
-                    _resolveLocationFromMaps(text);
-                  }
-                },
                 decoration: InputDecoration(
-                  hintText: 'Enlace Google Maps (Opcional - https://maps.app.goo.gl/...)',
-                  prefixIcon: const Icon(Icons.pin_drop_outlined),
-                  suffixIcon: IconButton(
-                    icon: _isResolvingLocation
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.auto_fix_high_rounded, color: AppColors.primaryLight),
-                    tooltip: 'Resolver Municipio y Estado desde Maps',
-                    onPressed: () {
-                      final url = _mapsController.text.trim();
-                      if (url.isNotEmpty) {
-                        _resolveLocationFromMaps(url);
-                      }
-                    },
+                  hintText: 'Enlace Google Maps (Opcional)',
+                  prefixIcon: const Icon(Icons.location_on_outlined),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_mapsController.text.isNotEmpty)
+                        IconButton(
+                          icon: _isResolvingLocation
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.auto_fix_high_rounded, color: AppColors.whatsappGreen),
+                          tooltip: 'Resolver Municipio y Estado desde este enlace',
+                          onPressed: () => _resolveLocationFromMaps(_mapsController.text),
+                        ),
+                      IconButton(
+                        icon: _isGettingGps
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.my_location_rounded, color: AppColors.primaryLight),
+                        tooltip: 'Obtener GPS Actual',
+                        onPressed: _isGettingGps ? null : _getCurrentLocation,
+                      ),
+                    ],
                   ),
                 ),
+                onChanged: (val) {
+                  if (val.contains('maps') || val.contains('http') || RegExp(r'\d+\.\d+').hasMatch(val)) {
+                    _resolveLocationFromMaps(val);
+                  }
+                },
               ),
               const SizedBox(height: 16),
 
-              // 5. Tipo de Evento (ChoiceChips: Choque, Robo, Cristal, Diverso, Otro)
+              // 6. Tipo de Evento (ChoiceChips con contraste)
               _buildSectionTitle('5. Tipo de Evento'),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -636,8 +684,25 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                     return Padding(
                       padding: const EdgeInsets.only(right: 6.0),
                       child: ChoiceChip(
-                        label: Text(evento),
+                        label: Text(
+                          evento,
+                          style: TextStyle(
+                            color: isSelected
+                                ? Colors.white
+                                : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
                         selected: isSelected,
+                        selectedColor: AppColors.primary,
+                        backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+                        side: BorderSide(
+                          color: isSelected
+                              ? AppColors.primary
+                              : (isDark ? AppColors.borderDark : AppColors.borderLight),
+                          width: isSelected ? 1.5 : 1.0,
+                        ),
                         onSelected: (val) {
                           if (val) setState(() => _selectedTipoEvento = evento);
                         },
@@ -661,7 +726,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               ],
               const SizedBox(height: 16),
 
-              // 6. Datos del Vehículo (Marca/Submarca y Color en primer plano)
+              // 7. Datos del Vehículo
               _buildSectionTitle('6. Datos del Vehículo'),
               Row(
                 children: [
@@ -709,7 +774,6 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                             decoration: const InputDecoration(
                               hintText: 'Placas (ej: NXZ-4433)',
                               prefixIcon: Icon(Icons.pin_outlined),
-                              isDense: true,
                             ),
                           ),
                         ),
@@ -719,27 +783,25 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                             controller: _polizaController,
                             decoration: const InputDecoration(
                               hintText: 'Póliza / Inciso',
-                              prefixIcon: Icon(Icons.article_outlined),
-                              isDense: true,
+                              prefixIcon: Icon(Icons.description_outlined),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
-              // 8. Datos del Asegurado / Reportante
+              // 8. Asegurado / Reportante
               _buildSectionTitle('7. Asegurado / Reportante'),
               TextFormField(
                 controller: _aseguradoController,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
-                  hintText: 'Nombre completo (ej: Daniel Rojas)',
-                  prefixIcon: Icon(Icons.person_outline_rounded),
+                  hintText: 'Nombre del conductor o reportante',
+                  prefixIcon: Icon(Icons.person_outline),
                 ),
               ),
               const SizedBox(height: 8),
@@ -759,24 +821,47 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                 controller: _observacionesController,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  hintText: 'Notas de cabina, lesionados, vialidades cerradas...',
+                  hintText: 'Notas de cabina, lesionados, vialidades cerradas, terceros...',
                   prefixIcon: Icon(Icons.notes_rounded),
                 ),
               ),
               const SizedBox(height: 24),
 
-              // Botón Principal: Guardar y Enviar por WhatsApp
+              // Botones de Despacho y Envío
+              // Botón 1: Enviar al Ajustador Directo (si hay ajustador seleccionado)
+              if (_selectedAjustadorNombre.isNotEmpty) ...[
+                ElevatedButton.icon(
+                  onPressed: () => _saveAndSend(mode: SendMode.ajustador),
+                  icon: const Icon(Icons.person_pin_circle_rounded, size: 20),
+                  label: Text(
+                    isEditing
+                        ? 'Actualizar y Enviar a $_selectedAjustadorNombre'
+                        : 'Guardar y Enviar a $_selectedAjustadorNombre (Directo)',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.whatsappGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 2,
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+
+              // Botón 2: Enviar al Grupo de WhatsApp (Siempre disponible)
               ElevatedButton.icon(
-                onPressed: () => _saveAndSend(sendWhatsApp: true),
-                icon: const Icon(Icons.send_rounded, size: 20),
+                onPressed: () => _saveAndSend(mode: SendMode.grupo),
+                icon: const Icon(Icons.groups_rounded, size: 20),
                 label: Text(
-                  _selectedAjustadorNombre.isNotEmpty
-                      ? 'Guardar y Enviar a $_selectedAjustadorNombre por WhatsApp'
-                      : 'Guardar y Enviar por WhatsApp',
+                  isEditing
+                      ? 'Actualizar y Enviar al Grupo WhatsApp'
+                      : 'Guardar y Enviar al Grupo de WhatsApp',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.whatsappGreen,
+                  backgroundColor: const Color(0xFF128C7E),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -785,11 +870,14 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
               ),
               const SizedBox(height: 10),
 
-              // Botón Secundario: Solo Guardar en Local
+              // Botón 3: Solo Guardar en Base Local
               OutlinedButton.icon(
-                onPressed: () => _saveAndSend(sendWhatsApp: false),
+                onPressed: () => _saveAndSend(mode: SendMode.none),
                 icon: const Icon(Icons.save_outlined),
-                label: const Text('Solo Guardar en Base Local'),
+                label: Text(
+                  isEditing ? 'Solo Guardar Cambios' : 'Solo Guardar en Base Local',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -805,7 +893,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6.0, top: 4.0),
+      padding: const EdgeInsets.only(bottom: 8.0),
       child: Text(
         title,
         style: const TextStyle(
@@ -817,8 +905,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     );
   }
 
-  /// Muestra la tabla de tramos carreteros y kilometrajes de Arco Norte
-  void _showArcoNorteModal(BuildContext context) {
+  void _showArcoNorteCatalog(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -826,132 +913,61 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
-        String filter = '';
-        return StatefulBuilder(
-          builder: (modalCtx, setModalState) {
-            final filteredTramos = ArcoNorteService.tramos.where((t) {
-              if (filter.isEmpty) return true;
-              final q = filter.toLowerCase();
-              return t.localidad.toLowerCase().contains(q) ||
-                  t.codigoPostal.contains(q) ||
-                  t.tramoKilometrico.toLowerCase().contains(q) ||
-                  t.estado.toLowerCase().contains(q);
-            }).toList();
-
-            return DraggableScrollableSheet(
-              initialChildSize: 0.75,
-              maxChildSize: 0.92,
-              minChildSize: 0.45,
-              expand: false,
-              builder: (context, scrollController) {
-                return Column(
-                  children: [
-                    Container(
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[400],
-                        borderRadius: BorderRadius.circular(2),
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (_, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Autopista Arco Norte (Tramos y Km)',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.alt_route_rounded, color: AppColors.primaryLight),
-                          const SizedBox(width: 8),
-                          const Expanded(
-                            child: Text(
-                              'Tramos Carreteros Arco Norte',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => Navigator.pop(modalCtx),
-                          ),
-                        ],
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
                       ),
+                    ],
+                  ),
+                  const Text(
+                    'Toca un tramo para aplicar automáticamente Municipio, Estado y CP:',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController,
+                      itemCount: ArcoNorteService.tramos.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, index) {
+                        final t = ArcoNorteService.tramos[index];
+                        return ListTile(
+                          dense: true,
+                          title: Text('${t.localidad} (${t.estado})', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text('Tramo: ${t.tramoKilometrico} • CP ${t.codigoPostal}'),
+                          trailing: const Icon(Icons.chevron_right, size: 18),
+                          onTap: () {
+                            setState(() {
+                              _municipioController.text = t.localidad;
+                              _estadoController.text = t.estado;
+                              _referenciasController.text = 'Autopista Arco Norte (${t.tramoKilometrico}) CP ${t.codigoPostal}';
+                            });
+                            Navigator.pop(ctx);
+                          },
+                        );
+                      },
                     ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      child: TextField(
-                        decoration: InputDecoration(
-                          hintText: 'Buscar por km, localidad o C.P. (ej. 182, Sahagún)',
-                          prefixIcon: const Icon(Icons.search),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        onChanged: (val) {
-                          setModalState(() {
-                            filter = val;
-                          });
-                        },
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: ListView.separated(
-                        controller: scrollController,
-                        itemCount: filteredTramos.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, i) {
-                          final tramo = filteredTramos[i];
-                          return ListTile(
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    tramo.localidad,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primaryLight.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    'CP ${tramo.codigoPostal}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.primaryLight,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            subtitle: Text(
-                              '${tramo.tramoKilometrico} • ${tramo.estado}',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
-                            onTap: () {
-                              setState(() {
-                                _municipioController.text = tramo.localidad;
-                                _estadoController.text = tramo.estado;
-                                _referenciasController.text = 'Autopista Arco Norte ${tramo.tramoKilometrico}';
-                              });
-                              Navigator.pop(modalCtx);
-                              ScaffoldMessenger.of(this.context).showSnackBar(
-                                SnackBar(
-                                  content: Text('🛣️ Tramo seleccionado: ${tramo.localidad} (${tramo.tramoKilometrico})'),
-                                  backgroundColor: AppColors.statusConcluido,
-                                  duration: const Duration(seconds: 2),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              },
+                  ),
+                ],
+              ),
             );
           },
         );

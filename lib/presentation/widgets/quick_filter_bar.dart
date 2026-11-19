@@ -4,48 +4,73 @@ import '../../core/theme/app_colors.dart';
 import '../../domain/models/siniestro_model.dart';
 import '../providers/siniestro_provider.dart';
 
-/// Barra de filtros rápidos de estatus y búsqueda para el tablero operativo
-class QuickFilterBar extends ConsumerStatefulWidget {
+/// Barra de filtros rápidos de búsqueda y chips de estatus operativo
+class QuickFilterBar extends ConsumerWidget {
   const QuickFilterBar({super.key});
 
-  @override
-  ConsumerState<QuickFilterBar> createState() => _QuickFilterBarState();
-}
+  Widget _buildChip({
+    required BuildContext context,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onSelected,
+    Color? dotColor,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-class _QuickFilterBarState extends ConsumerState<QuickFilterBar> {
-  final TextEditingController _searchController = TextEditingController();
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+    return ChoiceChip(
+      avatar: dotColor != null
+          ? CircleAvatar(
+              backgroundColor: dotColor,
+              radius: 5,
+            )
+          : null,
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isSelected
+              ? Colors.white
+              : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+          fontSize: 13,
+        ),
+      ),
+      selected: isSelected,
+      selectedColor: AppColors.primary,
+      backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+      side: BorderSide(
+        color: isSelected
+            ? AppColors.primary
+            : (isDark ? AppColors.borderDark : AppColors.borderLight),
+        width: isSelected ? 1.5 : 1.0,
+      ),
+      onSelected: (_) => onSelected(),
+    );
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final filterState = ref.watch(siniestroFilterProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
     return Column(
       children: [
-        // Campo de Búsqueda Dinámica
+        // Campo de Búsqueda Rápida
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0),
           child: TextField(
-            controller: _searchController,
-            onChanged: (val) {
+            onChanged: (query) {
               ref.read(siniestroFilterProvider.notifier).state =
-                  filterState.copyWith(searchQuery: val);
+                  filterState.copyWith(searchQuery: query);
             },
             decoration: InputDecoration(
               hintText: 'Buscar folio, asegurado, placa, ajustador...',
-              prefixIcon: const Icon(Icons.search_rounded, size: 20),
-              suffixIcon: _searchController.text.isNotEmpty
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: filterState.searchQuery.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.clear_rounded, size: 18),
+                      icon: const Icon(Icons.clear, size: 18),
                       onPressed: () {
-                        _searchController.clear();
                         ref.read(siniestroFilterProvider.notifier).state =
                             filterState.copyWith(searchQuery: '');
                       },
@@ -64,67 +89,60 @@ class _QuickFilterBarState extends ConsumerState<QuickFilterBar> {
           padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 4.0),
           child: Row(
             children: [
-              ChoiceChip(
-                label: const Text('Todos'),
-                selected: filterState.status == null,
-                onSelected: (selected) {
+              _buildChip(
+                context: context,
+                label: 'Todos',
+                isSelected: filterState.status == null,
+                onSelected: () {
                   ref.read(siniestroFilterProvider.notifier).state =
                       filterState.copyWith(status: () => null);
                 },
               ),
               const SizedBox(width: 8),
-              ChoiceChip(
-                avatar: const CircleAvatar(
-                  backgroundColor: AppColors.statusAsignado,
-                  radius: 5,
-                ),
-                label: const Text('Asignados'),
-                selected: filterState.status == SiniestroEstatus.asignado,
-                onSelected: (selected) {
+              _buildChip(
+                context: context,
+                label: 'Asignados',
+                dotColor: AppColors.statusAsignado,
+                isSelected: filterState.status == SiniestroEstatus.asignado,
+                onSelected: () {
                   ref.read(siniestroFilterProvider.notifier).state = filterState.copyWith(
-                    status: () => selected ? SiniestroEstatus.asignado : null,
+                    status: () => filterState.status == SiniestroEstatus.asignado ? null : SiniestroEstatus.asignado,
                   );
                 },
               ),
               const SizedBox(width: 8),
-              ChoiceChip(
-                avatar: const CircleAvatar(
-                  backgroundColor: AppColors.statusEnAtencion,
-                  radius: 5,
-                ),
-                label: const Text('En Atención'),
-                selected: filterState.status == SiniestroEstatus.enAtencion,
-                onSelected: (selected) {
+              _buildChip(
+                context: context,
+                label: 'En Atención',
+                dotColor: AppColors.statusEnAtencion,
+                isSelected: filterState.status == SiniestroEstatus.enAtencion,
+                onSelected: () {
                   ref.read(siniestroFilterProvider.notifier).state = filterState.copyWith(
-                    status: () => selected ? SiniestroEstatus.enAtencion : null,
+                    status: () => filterState.status == SiniestroEstatus.enAtencion ? null : SiniestroEstatus.enAtencion,
                   );
                 },
               ),
               const SizedBox(width: 8),
-              ChoiceChip(
-                avatar: const CircleAvatar(
-                  backgroundColor: AppColors.statusConcluido,
-                  radius: 5,
-                ),
-                label: const Text('Concluidos'),
-                selected: filterState.status == SiniestroEstatus.concluido,
-                onSelected: (selected) {
+              _buildChip(
+                context: context,
+                label: 'Concluidos',
+                dotColor: AppColors.statusConcluido,
+                isSelected: filterState.status == SiniestroEstatus.concluido,
+                onSelected: () {
                   ref.read(siniestroFilterProvider.notifier).state = filterState.copyWith(
-                    status: () => selected ? SiniestroEstatus.concluido : null,
+                    status: () => filterState.status == SiniestroEstatus.concluido ? null : SiniestroEstatus.concluido,
                   );
                 },
               ),
               const SizedBox(width: 8),
-              ChoiceChip(
-                avatar: const CircleAvatar(
-                  backgroundColor: AppColors.statusCancelado,
-                  radius: 5,
-                ),
-                label: const Text('Cancelados'),
-                selected: filterState.status == SiniestroEstatus.cancelado,
-                onSelected: (selected) {
+              _buildChip(
+                context: context,
+                label: 'Cancelados',
+                dotColor: AppColors.statusCancelado,
+                isSelected: filterState.status == SiniestroEstatus.cancelado,
+                onSelected: () {
                   ref.read(siniestroFilterProvider.notifier).state = filterState.copyWith(
-                    status: () => selected ? SiniestroEstatus.cancelado : null,
+                    status: () => filterState.status == SiniestroEstatus.cancelado ? null : SiniestroEstatus.cancelado,
                   );
                 },
               ),

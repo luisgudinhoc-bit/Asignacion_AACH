@@ -18,7 +18,9 @@ class MetricasCorteScreen extends ConsumerWidget {
     final filter = ref.watch(metricsFilterProvider);
     final metrics = ref.watch(calculatedMetricsProvider);
     final siniestros = ref.watch(metricsSiniestrosProvider);
-    final ajustadores = ref.watch(ajustadoresProvider);
+    final ajustadores = ref.read(ajustadoresProvider);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -55,8 +57,24 @@ class MetricasCorteScreen extends ConsumerWidget {
                         return Padding(
                           padding: const EdgeInsets.only(right: 6.0),
                           child: ChoiceChip(
-                            label: Text(range.label),
+                            label: Text(
+                              range.label,
+                              style: TextStyle(
+                                color: isSelected
+                                    ? Colors.white
+                                    : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
                             selected: isSelected,
+                            selectedColor: AppColors.primary,
+                            backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+                            side: BorderSide(
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : (isDark ? AppColors.borderDark : AppColors.borderLight),
+                            ),
                             onSelected: (val) {
                               if (val) {
                                 ref.read(metricsFilterProvider.notifier).state =

@@ -8,6 +8,7 @@ import '../../core/utils/date_formatter.dart';
 import '../../domain/models/siniestro_model.dart';
 import '../providers/ajustador_provider.dart';
 import '../providers/siniestro_provider.dart';
+import '../screens/asignacion_rapida_screen.dart';
 import '../screens/detalle_siniestro_screen.dart';
 
 /// Tarjeta operativa para visualización rápida y acciones en un toque en el tablero
@@ -95,10 +96,11 @@ class SiniestroCard extends ConsumerWidget {
 
   Future<void> _resendWhatsApp(BuildContext context, WidgetRef ref) async {
     final ajustadores = ref.read(ajustadoresProvider);
-    final ajMatch = ajustadores.firstWhere(
-      (a) => a.nombre.toLowerCase() == siniestro.ajustador.toLowerCase(),
-      orElse: () => ajustadores.first,
-    );
+    final ajMatch = ajustadores.where(
+      (a) =>
+          a.nombre.toLowerCase() == siniestro.ajustador.toLowerCase() ||
+          siniestro.ajustador.toLowerCase().contains(a.nombre.toLowerCase()),
+    ).firstOrNull;
 
     final msg = WhatsAppService.buildAsignacionMessage(
       folio: siniestro.folio,
@@ -109,15 +111,76 @@ class SiniestroCard extends ConsumerWidget {
       placas: siniestro.placas,
       asegurado: siniestro.asegurado,
       telefonoAsegurado: siniestro.telefonoAsegurado,
-      ubicacion: siniestro.ubicacion,
+      ubicacion: siniestro.direccionCompleta,
       linkMaps: siniestro.linkMaps,
       observaciones: siniestro.observaciones,
       fechaHora: siniestro.fechaAsignacion,
     );
 
-    await WhatsAppService.sendWhatsAppMessage(
-      phone: ajMatch.telefonoWhatsApp,
-      message: msg,
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Reenviar Ficha Operativa',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                Text(
+                  'Folio: ${siniestro.folio} • ${siniestro.aseguradora}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 12),
+                if (ajMatch != null && ajMatch.telefonoWhatsApp.isNotEmpty)
+                  ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFE8F5E9),
+                      child: Icon(Icons.person, color: AppColors.whatsappGreen),
+                    ),
+                    title: Text('Enviar directo a ${ajMatch.nombre}'),
+                    subtitle: Text(ajMatch.telefonoWhatsApp),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      WhatsAppService.sendWhatsAppMessage(
+                        phone: ajMatch.telefonoWhatsApp,
+                        message: msg,
+                      );
+                    },
+                  ),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFE0F2F1),
+                    child: Icon(Icons.groups_rounded, color: Color(0xFF128C7E)),
+                  ),
+                  title: const Text('Enviar a Grupo de WhatsApp'),
+                  subtitle: const Text('Abre el selector de chats y grupos'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    WhatsAppService.shareToWhatsAppGeneric(msg);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -395,6 +458,21 @@ class SiniestroCard extends ConsumerWidget {
                     tooltip: 'Reenviar Ficha por WhatsApp',
                     visualDensity: VisualDensity.compact,
                     onPressed: () => _resendWhatsApp(context, ref),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 18, color: AppColors.primaryLight),
+                    tooltip: 'Editar Siniestro',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => AsignacionRapidaScreen(
+                            isStandaloneScreen: true,
+                            siniestroToEdit: siniestro,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   const Spacer(),
 

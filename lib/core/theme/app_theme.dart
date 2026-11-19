@@ -34,8 +34,19 @@ class AppTheme {
       chipTheme: ChipThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         side: const BorderSide(color: AppColors.borderLight),
-        selectedColor: AppColors.primary.withValues(alpha: 0.15),
-        labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        backgroundColor: Colors.white,
+        selectedColor: AppColors.primary,
+        checkmarkColor: Colors.white,
+        labelStyle: const TextStyle(
+          color: AppColors.textPrimaryLight,
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
+        secondaryLabelStyle: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 13,
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -97,8 +108,19 @@ class AppTheme {
       chipTheme: ChipThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         side: const BorderSide(color: AppColors.borderDark),
-        selectedColor: AppColors.primaryLight.withValues(alpha: 0.25),
-        labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        backgroundColor: AppColors.surfaceDark,
+        selectedColor: AppColors.primaryLight,
+        checkmarkColor: Colors.white,
+        labelStyle: const TextStyle(
+          color: AppColors.textPrimaryDark,
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
+        secondaryLabelStyle: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 13,
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
