@@ -58,18 +58,24 @@ class MetricasCorteScreen extends ConsumerWidget {
                     child: Row(
                       children: DateRangeFilter.values.map((range) {
                         final isSelected = filter.dateRange == range;
+                        final textColor = isSelected
+                            ? Colors.white
+                            : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight);
                         return Padding(
                           padding: const EdgeInsets.only(right: 6.0),
                           child: ChoiceChip(
                             label: Text(
                               range.label,
                               style: TextStyle(
-                                color: isSelected
-                                    ? Colors.white
-                                    : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                                color: textColor,
                                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                                 fontSize: 13,
                               ),
+                            ),
+                            labelStyle: TextStyle(
+                              color: textColor,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                              fontSize: 13,
                             ),
                             selected: isSelected,
                             selectedColor: AppColors.primary,

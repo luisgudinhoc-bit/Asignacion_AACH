@@ -88,7 +88,7 @@ class _TableroOperativoView extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Asignación AACH',
+              'Asignacion AACH',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             Text(

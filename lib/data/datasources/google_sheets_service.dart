@@ -33,7 +33,6 @@ class _AuthenticatedClient extends http.BaseClient {
 class GoogleSheetsService {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     clientId: kIsWeb ? AppConstants.googleOAuthWebClientId : null,
-    serverClientId: AppConstants.googleOAuthWebClientId,
     scopes: [
       sheets.SheetsApi.spreadsheetsScope,
       'email',

@@ -1,6 +1,6 @@
 /// Constantes globales de la aplicación Asignación AACH
 class AppConstants {
-  static const String appName = 'Asignación AACH';
+  static const String appName = 'Asignacion AACH';
   static const String appVersion = '1.0.0';
   static const String defaultSpreadsheetTitle = 'CONTROL_OPERATIVO_AACH_2026';
   static const String defaultSpreadsheetId = '1mh_cS0wWdEYFhUn0lRergJc6UPVcMKAhymgasAr4e0w';

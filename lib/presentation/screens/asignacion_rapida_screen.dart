@@ -506,18 +506,24 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                   children: aseguradoras.map((cia) {
                     final isSelected = _selectedAseguradora == cia;
                     final ciaColor = AppColors.getAseguradoraColor(cia);
+                    final textColor = isSelected
+                        ? Colors.white
+                        : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight);
                     return Padding(
                       padding: const EdgeInsets.only(right: 8.0),
                       child: ChoiceChip(
                         label: Text(
                           cia,
                           style: TextStyle(
-                            color: isSelected
-                                ? Colors.white
-                                : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                            color: textColor,
                             fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                             fontSize: 13,
                           ),
+                        ),
+                        labelStyle: TextStyle(
+                          color: textColor,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                          fontSize: 13,
                         ),
                         selected: isSelected,
                         selectedColor: ciaColor,
@@ -567,6 +573,9 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                       runSpacing: 8,
                       children: ajustadores.map((aj) {
                         final isSelected = _selectedAjustadorId == aj.id;
+                        final textColor = isSelected
+                            ? Colors.white
+                            : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight);
                         return ChoiceChip(
                           avatar: CircleAvatar(
                             backgroundColor: isSelected
@@ -586,12 +595,15 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                           label: Text(
                             aj.nombre,
                             style: TextStyle(
-                              color: isSelected
-                                  ? Colors.white
-                                  : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                              color: textColor,
                               fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                               fontSize: 13,
                             ),
+                          ),
+                          labelStyle: TextStyle(
+                            color: textColor,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                            fontSize: 13,
                           ),
                           selected: isSelected,
                           selectedColor: AppColors.primary,
@@ -709,18 +721,24 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
                 child: Row(
                   children: AppConstants.tiposEvento.map((evento) {
                     final isSelected = _selectedTipoEvento == evento;
+                    final textColor = isSelected
+                        ? Colors.white
+                        : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight);
                     return Padding(
                       padding: const EdgeInsets.only(right: 6.0),
                       child: ChoiceChip(
                         label: Text(
                           evento,
                           style: TextStyle(
-                            color: isSelected
-                                ? Colors.white
-                                : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                            color: textColor,
                             fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                             fontSize: 13,
                           ),
+                        ),
+                        labelStyle: TextStyle(
+                          color: textColor,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                          fontSize: 13,
                         ),
                         selected: isSelected,
                         selectedColor: AppColors.primary,

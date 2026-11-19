@@ -43,7 +43,7 @@
     </queries>
 
     <application
-        android:label="Asignación AACH"
+        android:label="Asignacion AACH"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -69,9 +69,5 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- Descarga automática del modelo OCR local de Google ML Kit -->
-        <meta-data
-            android:name="com.google.mlkit.vision.DEPENDENCIES"
-            android:value="ocr" />
     </application>
 </manifest>

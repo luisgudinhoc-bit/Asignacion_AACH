@@ -18,6 +18,10 @@ class QuickFilterBar extends ConsumerWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
+    final textColor = isSelected
+        ? Colors.white
+        : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight);
+
     return ChoiceChip(
       avatar: dotColor != null
           ? CircleAvatar(
@@ -28,12 +32,15 @@ class QuickFilterBar extends ConsumerWidget {
       label: Text(
         label,
         style: TextStyle(
-          color: isSelected
-              ? Colors.white
-              : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+          color: textColor,
           fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
           fontSize: 13,
         ),
+      ),
+      labelStyle: TextStyle(
+        color: textColor,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+        fontSize: 13,
       ),
       selected: isSelected,
       selectedColor: AppColors.primary,
