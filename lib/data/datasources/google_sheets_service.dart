@@ -164,6 +164,23 @@ class GoogleSheetsService {
         );
       }
 
+      // Verificar y agregar pestaña HISTORIAL_CORTES
+      if (!existingTitles.contains(SheetsConfig.tabHistorialCortes)) {
+        requests.add(
+          sheets.Request(
+            addSheet: sheets.AddSheetRequest(
+              properties: sheets.SheetProperties(
+                title: SheetsConfig.tabHistorialCortes,
+                gridProperties: sheets.GridProperties(
+                  frozenRowCount: 1,
+                  columnCount: SheetsConfig.historialCortesHeaders.length + 2,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
       if (requests.isNotEmpty) {
         await _sheetsApi!.spreadsheets.batchUpdate(
           sheets.BatchUpdateSpreadsheetRequest(requests: requests),
@@ -186,6 +203,11 @@ class GoogleSheetsService {
         spreadsheetId,
         '${SheetsConfig.tabCatalogo}!A1:C1',
         SheetsConfig.catalogoHeaders,
+      );
+      await _writeHeadersIfEmpty(
+        spreadsheetId,
+        '${SheetsConfig.tabHistorialCortes}!A1:J1',
+        SheetsConfig.historialCortesHeaders,
       );
 
       // Si la pestaña de catálogo o ajustadores acaba de crearse, insertar valores iniciales
@@ -497,5 +519,63 @@ class GoogleSheetsService {
         valueInputOption: 'USER_ENTERED',
       );
     }
+  }
+
+  // ==================== OPERACIONES HISTORIAL DE CORTES ====================
+
+  /// Registra una fila congelada de corte operativo en la pestaña HISTORIAL_CORTES
+  Future<int?> appendCorteHistorico(
+    String spreadsheetId, {
+    required String periodo,
+    required int totalAsignados,
+    required int totalConcluidos,
+    required String efectividad,
+    required String serviciosPorAjustador,
+    required String tiempoPromArribo,
+    required String duracionPromAtencion,
+    required String desgloseCierres,
+    String observaciones = '',
+  }) async {
+    _assertAuthenticated();
+    await ensureSheetTabsAndHeaders(spreadsheetId);
+
+    final now = DateTime.now();
+    final dia = now.day.toString().padLeft(2, '0');
+    final mes = now.month.toString().padLeft(2, '0');
+    final anio = now.year.toString();
+    final hora = now.hour.toString().padLeft(2, '0');
+    final min = now.minute.toString().padLeft(2, '0');
+    final fechaStr = '$dia/$mes/$anio $hora:$min';
+
+    final row = [
+      fechaStr,
+      periodo,
+      totalAsignados,
+      totalConcluidos,
+      efectividad,
+      serviciosPorAjustador,
+      tiempoPromArribo,
+      duracionPromAtencion,
+      desgloseCierres,
+      observaciones,
+    ];
+
+    final valueRange = sheets.ValueRange(values: [row]);
+    final response = await _sheetsApi!.spreadsheets.values.append(
+      valueRange,
+      spreadsheetId,
+      '${SheetsConfig.tabHistorialCortes}!A:J',
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+    );
+
+    final updatedRange = response.updates?.updatedRange;
+    if (updatedRange != null) {
+      final match = RegExp(r'!A(\d+):').firstMatch(updatedRange);
+      if (match != null) {
+        return int.tryParse(match.group(1)!);
+      }
+    }
+    return null;
   }
 }

@@ -3,6 +3,7 @@ class SheetsConfig {
   static const String tabSiniestros = 'SINIESTROS';
   static const String tabAjustadores = 'AJUSTADORES';
   static const String tabCatalogo = 'CATALOGO_ASEGURADORAS';
+  static const String tabHistorialCortes = 'HISTORIAL_CORTES';
 
   /// Encabezados de la hoja maestra de Siniestros (Columnas A a K de la hoja operativa AACH)
   static const List<String> siniestrosHeaders = [
@@ -33,5 +34,19 @@ class SheetsConfig {
     'NOMBRE_ASEGURADORA',
     'PREFIJO_HABITUAL',
     'TELEFONO_CABINA_EMERGENCIA',
+  ];
+
+  /// Encabezados de la pestaña de Historial de Cortes Operativos
+  static const List<String> historialCortesHeaders = [
+    'FECHA_CORTE',              // Col A: Fecha y hora en que se congeló el corte
+    'PERIODO',                  // Col B: Rango evaluado (Hoy, Semana, Quincena, etc.)
+    'TOTAL_ASIGNADOS',          // Col C: Total de siniestros
+    'TOTAL_CONCLUIDOS',         // Col D: Concluidos con éxito
+    'EFECTIVIDAD',              // Col E: % de efectividad
+    'SERVICIOS_POR_AJUSTADOR',  // Col F: Desglose por cada ajustador
+    'TIEMPO_PROM_ARRIBO',       // Col G: Promedio de llegada
+    'DURACION_PROM_ATENCION',   // Col H: Promedio de atención
+    'DESGLOSE_CIERRES',         // Col I: Convenios, volantes, etc.
+    'OBSERVACIONES',            // Col J: Notas del coordinador
   ];
 }
