@@ -99,6 +99,7 @@ CABINA SOLICITA ARRIBO INMEDIATO
       ajustador: siniestro1.ajustador,
       tipoEvento: siniestro1.tipoEvento,
       vehiculo: siniestro1.vehiculo,
+      colorVehiculo: siniestro1.colorVehiculo,
       placas: siniestro1.placas,
       asegurado: siniestro1.asegurado,
       telefonoAsegurado: siniestro1.telefonoAsegurado,
@@ -106,6 +107,8 @@ CABINA SOLICITA ARRIBO INMEDIATO
       linkMaps: siniestro1.linkMaps,
       fechaHora: siniestro1.fechaAsignacion,
     );
+
+    expect(fichaWhatsApp.contains('Nissan Versa 2021 Blanco'), isTrue);
 
     stdout.writeln('\n  📱 Ficha WhatsApp formateada para el ajustador:');
     stdout.writeln('------------------------------------------------------------');

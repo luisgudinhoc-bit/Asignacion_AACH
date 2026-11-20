@@ -9,16 +9,39 @@ import '../../domain/models/aseguradora_model.dart';
 import '../../domain/models/siniestro_model.dart';
 import 'local_storage_service.dart';
 
-/// Cliente HTTP autenticado con cabeceras Bearer de Google Sign-In
+/// Cliente HTTP autenticado con cabeceras Bearer dinámicas de Google Sign-In
 class _AuthenticatedClient extends http.BaseClient {
-  final Map<String, String> _headers;
+  final GoogleSignInAccount _account;
   final http.Client _client = http.Client();
 
-  _AuthenticatedClient(this._headers);
+  _AuthenticatedClient(this._account);
 
   @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) {
-    request.headers.addAll(_headers);
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    // 1. Obtener headers frescos en cada petición para evitar tokens expirados
+    Map<String, String> headers = {};
+    try {
+      headers = await _account.authHeaders;
+    } catch (e) {
+      debugPrint('Aviso obteniendo authHeaders: $e');
+    }
+
+    // 2. Si authHeaders no incluye Authorization o está vacía, forzar desde authentication
+    if (!headers.containsKey('Authorization') || headers['Authorization'] == null || headers['Authorization']!.isEmpty) {
+      try {
+        final auth = await _account.authentication;
+        if (auth.accessToken != null && auth.accessToken!.isNotEmpty) {
+          headers = {
+            ...headers,
+            'Authorization': 'Bearer ${auth.accessToken}',
+          };
+        }
+      } catch (e) {
+        debugPrint('Aviso obteniendo authentication.accessToken: $e');
+      }
+    }
+
+    request.headers.addAll(headers);
     return _client.send(request);
   }
 
@@ -52,8 +75,19 @@ class GoogleSheetsService {
       final account = await _googleSignIn.signIn();
       if (account != null) {
         _currentUser = account;
-        final authHeaders = await account.authHeaders;
-        final authClient = _AuthenticatedClient(authHeaders);
+
+        // En Android/Web, verificar y solicitar el scope explícito de Google Sheets si falta
+        try {
+          final hasScope = await _googleSignIn.canAccessScopes([sheets.SheetsApi.spreadsheetsScope]);
+          if (!hasScope) {
+            debugPrint('Solicitando scope de Google Sheets...');
+            await _googleSignIn.requestScopes([sheets.SheetsApi.spreadsheetsScope]);
+          }
+        } catch (e) {
+          debugPrint('Aviso al solicitar scopes de Sheets: $e');
+        }
+
+        final authClient = _AuthenticatedClient(account);
         _sheetsApi = sheets.SheetsApi(authClient);
         await LocalStorageService.setUserEmail(account.email);
         debugPrint('Google Sign-In exitoso: ${account.email}');
@@ -71,8 +105,7 @@ class GoogleSheetsService {
       final account = await _googleSignIn.signInSilently();
       if (account != null) {
         _currentUser = account;
-        final authHeaders = await account.authHeaders;
-        final authClient = _AuthenticatedClient(authHeaders);
+        final authClient = _AuthenticatedClient(account);
         _sheetsApi = sheets.SheetsApi(authClient);
         await LocalStorageService.setUserEmail(account.email);
         return true;

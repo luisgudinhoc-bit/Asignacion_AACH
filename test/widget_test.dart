@@ -287,6 +287,76 @@ El administrador puede postular un ajustador 👇
 
       expect(parsed.linkMaps, 'https://maps.app.goo.gl/EGbX4taZmYpqBXS98');
     });
+
+    test('Extrae horas apresuradas escritas por el jefe (rep 1430 asig 1445, H.rep 14:30 H.asig 14:45, 1430/1445)', () {
+      // Caso 1: militar sin dos puntos con prefijos
+      final p1 = WhatsAppParserService.parse('''
+Folio: 3059400
+rep 1430 asig 1445
+Auto: Aveo
+''');
+      expect(p1.horaReporte, '14:30');
+      expect(p1.horaAsignacion, '14:45');
+      expect(p1.observaciones, contains('14:30'));
+      expect(p1.observaciones, contains('14:45'));
+
+      // Caso 2: con H.rep y H.asig y dos puntos
+      final p2 = WhatsAppParserService.parse('H.rep 14:30 H.asig 14:45 Nissan Versa');
+      expect(p2.horaReporte, '14:30');
+      expect(p2.horaAsignacion, '14:45');
+
+      // Caso 3: con pleca o diagonal
+      final p3 = WhatsAppParserService.parse('3059401 14:30 / 14:45 Pachuca');
+      expect(p3.horaReporte, '14:30');
+      expect(p3.horaAsignacion, '14:45');
+
+      // Caso 4: 4 digitos con pleca
+      final p4 = WhatsAppParserService.parse('1430/1445 choque');
+      expect(p4.horaReporte, '14:30');
+      expect(p4.horaAsignacion, '14:45');
+
+      // Caso 5: con puntos en vez de dos puntos
+      final p5 = WhatsAppParserService.parse('rep 14.30 asig 14.45');
+      expect(p5.horaReporte, '14:30');
+      expect(p5.horaAsignacion, '14:45');
+
+      // Caso 6: cabina y asignacion
+      final p6 = WhatsAppParserService.parse('cabina 1430 asig 1445');
+      expect(p6.horaReporte, '14:30');
+      expect(p6.horaAsignacion, '14:45');
+    });
+
+    test('Extrae vehiculo y color con camiones, pesados y abreviaturas (KENWORTH Blanco, aveo Blanco am, Camioneta blanca)', () {
+      // Caso 1: Camión pesado Kenworth Blanco
+      final p1 = WhatsAppParserService.parse('''
+Km 164 +200 dir Tulancingo
+KENWORTH Blanco
+3059342
+rep 1430 asig 1445
+''');
+      expect(p1.vehiculo, 'Kenworth');
+      expect(p1.colorVehiculo, 'Blanco');
+
+      // Caso 2: Aveo Blanco
+      final p2 = WhatsAppParserService.parse('aveo Blanco am 67994');
+      expect(p2.vehiculo, 'Aveo');
+      expect(p2.colorVehiculo, 'Blanco');
+
+      // Caso 3: Camioneta blanca con placas
+      final p3 = WhatsAppParserService.parse('Camioneta blanca placas HNZ-1234');
+      expect(p3.vehiculo, 'Camioneta');
+      expect(p3.colorVehiculo, 'Blanco');
+
+      // Caso 4: Auto: Versa bco
+      final p4 = WhatsAppParserService.parse('Auto: Versa bco');
+      expect(p4.vehiculo, 'Versa');
+      expect(p4.colorVehiculo, 'Blanco');
+
+      // Caso 5: Frontier blanca
+      final p5 = WhatsAppParserService.parse('Frontier blanca');
+      expect(p5.vehiculo, 'Frontier');
+      expect(p5.colorVehiculo, 'Blanco');
+    });
   });
 
   group('LocationResolverService Tests', () {

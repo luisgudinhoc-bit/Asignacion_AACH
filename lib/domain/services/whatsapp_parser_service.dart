@@ -68,14 +68,10 @@ class WhatsAppParserService {
       return const ParsedCabinaMessage(rawText: '');
     }
 
-    // Extracción de horas operativas Inbursa / Cabina antes de limpieza (ej: "22:30 22:32")
-    String? horaReporte;
-    String? horaAsignacion;
-    final inbursaHoursMatch = RegExp(r'\b(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})\b').firstMatch(rawText);
-    if (inbursaHoursMatch != null) {
-      horaReporte = inbursaHoursMatch.group(1);
-      horaAsignacion = inbursaHoursMatch.group(2);
-    }
+    // Extracción inteligente de horas operativas (soporta prisas, formatos militares sin dos puntos, H.rep, cabina, asig, etc.)
+    final horasOperativas = _extractHorasOperativas(rawText);
+    final horaReporte = horasOperativas['horaReporte'];
+    final horaAsignacion = horasOperativas['horaAsignacion'];
 
     // Etapa 1: Limpieza profunda de ruido de capturas y chat de WhatsApp
     final cleanedText = _cleanOcrNoise(rawText);
@@ -111,7 +107,7 @@ class WhatsAppParserService {
     final referencias = _extractReferencias(cleanedText);
     final ubicacion = _extractUbicacion(cleanedText);
 
-    // Integración de observaciones con Terceros, Cabinero y horas Inbursa
+    // Integración de observaciones con Terceros, Cabinero y horas operativas
     var observaciones = _extractObservaciones(cleanedText);
     if (vehiculosTerceros.isNotEmpty) {
       final terStr = vehiculosTerceros.join(' • ');
@@ -121,6 +117,16 @@ class WhatsAppParserService {
     }
     if (horaReporte != null && horaAsignacion != null) {
       final horasStr = 'Reporte cabina: $horaReporte hrs | Asignación: $horaAsignacion hrs';
+      observaciones = observaciones != null && observaciones.isNotEmpty
+          ? '$observaciones • $horasStr'
+          : horasStr;
+    } else if (horaReporte != null) {
+      final horasStr = 'Reporte cabina: $horaReporte hrs';
+      observaciones = observaciones != null && observaciones.isNotEmpty
+          ? '$observaciones • $horasStr'
+          : horasStr;
+    } else if (horaAsignacion != null) {
+      final horasStr = 'Asignación: $horaAsignacion hrs';
       observaciones = observaciones != null && observaciones.isNotEmpty
           ? '$observaciones • $horasStr'
           : horasStr;
@@ -488,9 +494,9 @@ class WhatsAppParserService {
     return results;
   }
 
-  /// Catálogo ampliado de submarcas y marcas populares en siniestros en México
+  /// Catálogo ampliado de submarcas y marcas populares en siniestros en México (autos, pesados, motos)
   static const List<String> _submarcasMexicanas = [
-    // Submarcas específicas
+    // Submarcas específicas de autos y SUVs
     'Groove', 'Tiigo', 'Tiggo', 'Frontier', 'Audi A1', 'Audi A3', 'Audi A4',
     'Versa', 'Aveo', 'Sentra', 'Vento', 'Jetta', 'March', 'Spark', 'Beat',
     'Rio', 'Forte', 'Onix', 'Swift', 'Hilux', 'NP300', 'Dmax', 'Ranger',
@@ -503,7 +509,16 @@ class WhatsAppParserService {
     'Mazda 2', 'Mazda 3', 'Urvan', 'Hiace', 'Transit', 'Saveiro', 'Tornado',
     'Captiva', 'Kwid', 'Duster', 'Stepway', 'Sandero', 'Oroch', 'Omoda',
     'MG5', 'MG GT', 'ZS', 'Raize', 'Avanza',
-    // Marcas generales cuando se mencionan solas o seguidas de color
+    // Pesados, camiones y tractocamiones (frecuentes en carreteras de Hidalgo/Edomex)
+    'Kenworth', 'Freightliner', 'International', 'Peterbilt', 'Volvo', 'Mack',
+    'Hino', 'Isuzu', 'Foton', 'Shacman', 'Tractocamión', 'Tractocamion', 'Tracto',
+    'Trailer', 'Tráiler', 'Torton', 'Tortón', 'Rabon', 'Rabón', 'Pipa',
+    'Autobus', 'Autobús', 'Microbus', 'Microbús', 'Combi', 'Van', 'Chasis', 'Plataforma',
+    // Motocicletas
+    'Italika', 'Bajaj', 'Pulsar', 'Vento Moto', 'Yamaha', 'KTM', 'Kurazai', 'Dinamo',
+    // Tipos genéricos
+    'Camioneta', 'Camión', 'Camion', 'Carro', 'Auto', 'Automóvil', 'Automovil', 'Coche', 'Moto', 'Motocicleta', 'Pickup', 'Pick up', 'Sedan', 'Sedán',
+    // Marcas generales
     'Nissan', 'Chevrolet', 'Volkswagen', 'VW', 'Toyota', 'Honda', 'Ford',
     'Mazda', 'Kia', 'Hyundai', 'Seat', 'Renault', 'Suzuki', 'Audi', 'BMW',
     'Mercedes', 'Chirey', 'MG', 'BYD', 'Geely',
@@ -514,10 +529,16 @@ class WhatsAppParserService {
     'bco': 'Blanco',
     'blco': 'Blanco',
     'blanco': 'Blanco',
+    'blanca': 'Blanco',
+    'bca': 'Blanco',
+    'blca': 'Blanco',
     'white': 'Blanco',
     'neg': 'Negro',
     'ngro': 'Negro',
     'negro': 'Negro',
+    'negra': 'Negro',
+    'nga': 'Negro',
+    'ngra': 'Negro',
     'black': 'Negro',
     'grs': 'Gris',
     'gris': 'Gris',
@@ -527,9 +548,14 @@ class WhatsAppParserService {
     'plta': 'Plata',
     'pte': 'Plata',
     'plata': 'Plata',
+    'plateado': 'Plata',
+    'plateada': 'Plata',
+    'pla': 'Plata',
     'silver': 'Plata',
     'rjo': 'Rojo',
     'rojo': 'Rojo',
+    'roja': 'Rojo',
+    'rja': 'Rojo',
     'red': 'Rojo',
     'guinda': 'Rojo Guinda',
     'azl': 'Azul',
@@ -539,6 +565,7 @@ class WhatsAppParserService {
     'vino': 'Vino',
     'tinto': 'Vino',
     'dorado': 'Dorado',
+    'dorada': 'Dorado',
     'oro': 'Dorado',
     'gold': 'Dorado',
     'arena': 'Arena',
@@ -547,22 +574,156 @@ class WhatsAppParserService {
     'cafe': 'Café',
     'verde': 'Verde',
     'amarillo': 'Amarillo',
+    'amarilla': 'Amarillo',
+    'ama': 'Amarillo',
     'naranja': 'Naranja',
+    'morado': 'Morado',
+    'morada': 'Morado',
+    'perla': 'Blanco Perla',
   };
 
-  /// Extrae conjuntamente Marca/Submarca, Color y detecta nombres en la misma línea ("Mazda negro Alberto Gutierrez")
+  /// Normaliza una cadena de hora (militar sin dos puntos como '1430', con punto '14.30', o am/pm '2:30pm') a 'HH:mm'
+  static String? _normalizeTimeString(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final lower = raw.trim().toLowerCase();
+
+    final isPm = lower.contains('pm') || lower.contains('p.m.');
+    final isAm = lower.contains('am') || lower.contains('a.m.');
+
+    final clean = lower.replaceAll(RegExp(r'[^\d:.]'), '');
+    if (clean.isEmpty) return null;
+
+    int hour = 0;
+    int minute = 0;
+
+    if (clean.contains(':') || clean.contains('.')) {
+      final parts = clean.split(RegExp(r'[:.]'));
+      if (parts.length >= 2) {
+        hour = int.tryParse(parts[0]) ?? -1;
+        minute = int.tryParse(parts[1]) ?? -1;
+      } else {
+        return null;
+      }
+    } else if (clean.length == 4) {
+      hour = int.tryParse(clean.substring(0, 2)) ?? -1;
+      minute = int.tryParse(clean.substring(2)) ?? -1;
+    } else if (clean.length == 3) {
+      hour = int.tryParse(clean.substring(0, 1)) ?? -1;
+      minute = int.tryParse(clean.substring(1)) ?? -1;
+    } else {
+      return null;
+    }
+
+    if (hour < 0 || minute < 0) return null;
+
+    if (isPm && hour < 12) hour += 12;
+    if (isAm && hour == 12) hour = 0;
+
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+      final hStr = hour.toString().padLeft(2, '0');
+      final mStr = minute.toString().padLeft(2, '0');
+      return '$hStr:$mStr';
+    }
+
+    return null;
+  }
+
+  /// Extrae inteligentemente las horas operativas (hora de reporte en cabina y hora de asignación)
+  /// contemplando notas apresuradas ("rep 1430 asig 1445", "H.rep 14:30 H.asig 14:45", "1430/1445", etc.)
+  static Map<String, String?> _extractHorasOperativas(String text) {
+    String? horaReporte;
+    String? horaAsignacion;
+
+    // 1. Detección por etiquetas explícitas
+    final repPat = RegExp(
+      r'(?:h\.?\s*rep(?:orte)?|rep(?:orte)?|cabina|h\.?\s*cabina|hr\.?\s*rep|r:)\s*[:\-]?\s*(\d{1,2}[:.]\d{2}|\d{3,4})(?:\s*(?:hrs?|h|am|pm|a\.m\.|p\.m\.))?',
+      caseSensitive: false,
+    );
+    final asigPat = RegExp(
+      r'(?:h\.?\s*asig(?:naci[oó]n)?|asig(?:naci[oó]n)?|hr\.?\s*asig|asigna|a:)\s*[:\-]?\s*(\d{1,2}[:.]\d{2}|\d{3,4})(?:\s*(?:hrs?|h|am|pm|a\.m\.|p\.m\.))?',
+      caseSensitive: false,
+    );
+
+    final mRep = repPat.firstMatch(text);
+    if (mRep != null && mRep.groupCount >= 1) {
+      final matchedFull = mRep.group(0) ?? '';
+      final val = mRep.group(1);
+      final amPm = matchedFull.toLowerCase().contains('pm') || matchedFull.toLowerCase().contains('p.m.')
+          ? ' pm'
+          : (matchedFull.toLowerCase().contains('am') || matchedFull.toLowerCase().contains('a.m.') ? ' am' : '');
+      horaReporte = _normalizeTimeString('${val ?? ""}$amPm');
+    }
+
+    final mAsig = asigPat.firstMatch(text);
+    if (mAsig != null && mAsig.groupCount >= 1) {
+      final matchedFull = mAsig.group(0) ?? '';
+      final val = mAsig.group(1);
+      final amPm = matchedFull.toLowerCase().contains('pm') || matchedFull.toLowerCase().contains('p.m.')
+          ? ' pm'
+          : (matchedFull.toLowerCase().contains('am') || matchedFull.toLowerCase().contains('a.m.') ? ' am' : '');
+      horaAsignacion = _normalizeTimeString('${val ?? ""}$amPm');
+    }
+
+    // 2. Si faltan una o ambas, buscar formato de par (ej: "14:30 14:45", "1430 1445", "14:30 / 14:45", "1430/1445")
+    if (horaReporte == null || horaAsignacion == null) {
+      final pairPat = RegExp(
+        r'\b(\d{1,2}[:.]\d{2}|\d{4})\s*(?:hrs?|h)?\s*(?:/|-|\||a|\s)\s*(\d{1,2}[:.]\d{2}|\d{4})\s*(?:hrs?|h)?\b',
+        caseSensitive: false,
+      );
+      for (final match in pairPat.allMatches(text)) {
+        final h1 = _normalizeTimeString(match.group(1));
+        final h2 = _normalizeTimeString(match.group(2));
+        if (h1 != null && h2 != null) {
+          horaReporte ??= h1;
+          horaAsignacion ??= h2;
+          break;
+        }
+      }
+    }
+
+    return {
+      'horaReporte': horaReporte,
+      'horaAsignacion': horaAsignacion,
+    };
+  }
+
+  /// Extrae conjuntamente Marca/Submarca, Color y detecta nombres en la misma línea ("Mazda negro Alberto Gutierrez", "KENWORTH Blanco")
   static Map<String, String?> _extractVehiculoYColor(String text, String? placasKnown) {
     String? vehiculo;
     String? color;
     String? sameLineName;
 
-    // 1. Revisión explícita con etiqueta
-    final explicitVeh = RegExp(r'(?:veh[ií]culo|auto|unidad|coche)\s*[:\-]\s*([^\n\r]+)', caseSensitive: false);
+    // 1. Revisión explícita con etiqueta (ej: "Vehículo: Kenworth blanco", "Auto: Aveo bco", "Unidad: Sentra rojo")
+    final explicitVeh = RegExp(
+      r'(?:veh[ií]culo|auto|unidad|coche|camioneta|cami[oó]n|tracto|trailer|tr[aá]iler|moto)\s*[:\-]\s*([^\n\r]+)',
+      caseSensitive: false,
+    );
     final matchVeh = explicitVeh.firstMatch(text);
     if (matchVeh != null && matchVeh.groupCount >= 1) {
       var val = matchVeh.group(1)?.trim() ?? '';
       if (placasKnown != null && placasKnown.isNotEmpty) val = val.replaceAll(placasKnown, '');
-      val = val.split(RegExp(r'\b(placa[s]?|color|ubi|poliza)\b', caseSensitive: false)).first;
+      val = val.split(RegExp(r'\b(placa[s]?|ubi|poliza)\b', caseSensitive: false)).first;
+
+      // Buscar si el color viene explícito dentro del campo de vehículo (ej: "color blanco" o "color: blanco")
+      final colInsideMatch = RegExp(r'\bcolor\s*[:\-]?\s*([A-Za-zÁÉÍÓÚáéíóú]+)', caseSensitive: false).firstMatch(val);
+      if (colInsideMatch != null) {
+        final rawCol = colInsideMatch.group(1)?.trim().toLowerCase() ?? '';
+        color = _coloresAbreviados[rawCol] ?? rawCol.capitalizeWords();
+        val = val.replaceAll(colInsideMatch.group(0)!, '').cleanWhitespace();
+      }
+
+      // Buscar si contiene una palabra de color conocida directamente (ej: "Aveo blanco" o "Sentra bco")
+      if (color == null) {
+        for (final entry in _coloresAbreviados.entries) {
+          final colPattern = RegExp('\\b${RegExp.escape(entry.key)}\\b', caseSensitive: false);
+          if (colPattern.hasMatch(val)) {
+            color = entry.value;
+            val = val.replaceAll(colPattern, '').cleanWhitespace();
+            break;
+          }
+        }
+      }
+
       if (val.trim().isNotEmpty) {
         vehiculo = val.trim().capitalizeWords();
       }
@@ -572,10 +733,10 @@ class WhatsAppParserService {
     final matchCol = explicitCol.firstMatch(text);
     if (matchCol != null && matchCol.groupCount >= 1) {
       final rawCol = matchCol.group(1)?.trim().toLowerCase() ?? '';
-      color = _coloresAbreviados[rawCol] ?? rawCol.capitalizeWords();
+      color ??= _coloresAbreviados[rawCol] ?? rawCol.capitalizeWords();
     }
 
-    // 2. Búsqueda línea por línea (ej: "Versa bco", "Groove bco", "Mazda negro Alberto Gutierrez")
+    // 2. Búsqueda línea por línea (ej: "Versa bco", "Groove bco", "KENWORTH Blanco", "Mazda negro Alberto Gutierrez")
     final lines = text.split(RegExp(r'[\r\n]+'));
     for (final line in lines) {
       final cleanLine = line.trim();
@@ -599,11 +760,11 @@ class WhatsAppParserService {
             vehiculo = '$vehiculo ${yearMatch.group(1)}';
           }
 
-          // Extraer color de la misma línea (ej: "bco", "neg", "rojo", "naranja")
+          // Extraer color de la misma línea (ej: "bco", "neg", "rojo", "blanco", "blanca")
           String? detectedColorKey;
           if (color == null) {
             for (final entry in _coloresAbreviados.entries) {
-              if (RegExp('\\b${RegExp.escape(entry.key)}\\b').hasMatch(lower)) {
+              if (RegExp('\\b${RegExp.escape(entry.key)}\\b', caseSensitive: false).hasMatch(lower)) {
                 color = entry.value;
                 detectedColorKey = entry.key;
                 break;
@@ -644,8 +805,23 @@ class WhatsAppParserService {
     if (color == null) {
       final lowerFull = text.toLowerCase();
       for (final entry in _coloresAbreviados.entries) {
-        if (RegExp('\\b${RegExp.escape(entry.key)}\\b').hasMatch(lowerFull)) {
+        if (RegExp('\\b${RegExp.escape(entry.key)}\\b', caseSensitive: false).hasMatch(lowerFull)) {
           color = entry.value;
+          break;
+        }
+      }
+    }
+
+    // 4. Si el vehículo contiene la palabra de color al final (ej: "Kenworth Blanco"), limpiarlo para no duplicar
+    if (vehiculo != null && color != null) {
+      final v = vehiculo;
+      for (final entry in _coloresAbreviados.entries) {
+        final pat = RegExp('\\b${RegExp.escape(entry.key)}\\b', caseSensitive: false);
+        if (pat.hasMatch(v)) {
+          final cleanedVeh = v.replaceAll(pat, '').cleanWhitespace();
+          if (cleanedVeh.isNotEmpty) {
+            vehiculo = cleanedVeh.capitalizeWords();
+          }
           break;
         }
       }

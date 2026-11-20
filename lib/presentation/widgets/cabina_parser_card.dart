@@ -200,7 +200,11 @@ class _CabinaParserCardState extends State<CabinaParserCard> {
                         if (_parsedResult!.tipoEvento != null)
                           _buildPreviewBadge(Icons.warning_amber_rounded, '${_parsedResult!.tipoEvento!}${_parsedResult!.detalleEvento != null && _parsedResult!.detalleEvento!.isNotEmpty && _parsedResult!.detalleEvento != _parsedResult!.tipoEvento ? " (${_parsedResult!.detalleEvento})" : ""}'),
                         if (_parsedResult!.horaReporte != null && _parsedResult!.horaAsignacion != null)
-                          _buildPreviewBadge(Icons.access_time_rounded, '${_parsedResult!.horaReporte!} ➔ ${_parsedResult!.horaAsignacion!}'),
+                          _buildPreviewBadge(Icons.access_time_rounded, 'Cabina: ${_parsedResult!.horaReporte!} ➔ Asig: ${_parsedResult!.horaAsignacion!}'),
+                        if (_parsedResult!.horaReporte != null && _parsedResult!.horaAsignacion == null)
+                          _buildPreviewBadge(Icons.access_time_rounded, 'Reporte: ${_parsedResult!.horaReporte!}'),
+                        if (_parsedResult!.horaReporte == null && _parsedResult!.horaAsignacion != null)
+                          _buildPreviewBadge(Icons.access_time_rounded, 'Asig: ${_parsedResult!.horaAsignacion!}'),
                         if (_parsedResult!.municipio != null)
                           _buildPreviewBadge(Icons.location_city, 'Mpio: ${_parsedResult!.municipio!}'),
                         if (_parsedResult!.estado != null)

@@ -10,6 +10,7 @@ class WhatsAppService {
     required String ajustador,
     required String tipoEvento,
     String? vehiculo,
+    String? colorVehiculo,
     String? placas,
     String? asegurado,
     String? telefonoAsegurado,
@@ -37,9 +38,23 @@ class WhatsAppService {
     if (telefonoAsegurado != null && telefonoAsegurado.trim().isNotEmpty) {
       buffer.writeln('📞 *Tel. Contacto:* ${telefonoAsegurado.trim()}');
     }
+
+    final bufferVeh = StringBuffer();
     if (vehiculo != null && vehiculo.trim().isNotEmpty) {
-      buffer.writeln('🚘 *Vehículo:* ${vehiculo.trim()}');
+      bufferVeh.write(vehiculo.trim());
     }
+    if (colorVehiculo != null && colorVehiculo.trim().isNotEmpty) {
+      final colorTrim = colorVehiculo.trim();
+      if (bufferVeh.isEmpty) {
+        bufferVeh.write(colorTrim);
+      } else if (!bufferVeh.toString().toLowerCase().contains(colorTrim.toLowerCase())) {
+        bufferVeh.write(' $colorTrim');
+      }
+    }
+    if (bufferVeh.isNotEmpty) {
+      buffer.writeln('🚘 *Vehículo:* ${bufferVeh.toString()}');
+    }
+
     if (placas != null && placas.trim().isNotEmpty) {
       buffer.writeln('🔢 *Placas:* ${placas.trim().toUpperCase()}');
     }

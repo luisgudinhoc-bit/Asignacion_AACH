@@ -108,9 +108,16 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final errStr = e.toString();
+        final is401 = errStr.contains('401');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('ID guardado. Aviso al verificar hoja: $e'),
+            duration: Duration(seconds: is401 ? 8 : 4),
+            content: Text(
+              is401
+                  ? '⚠️ ID guardado. Aviso (Error 401): Requiere permisos de Google Sheets. Cierra sesión y vuelve a entrar con Google para conceder permisos, y verifica que "Google Sheets API" esté habilitada en tu consola de Google Cloud.'
+                  : 'ID guardado. Aviso al verificar hoja: $e',
+            ),
             backgroundColor: AppColors.statusAsignado,
           ),
         );

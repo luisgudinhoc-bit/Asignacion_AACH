@@ -108,6 +108,7 @@ class SiniestroCard extends ConsumerWidget {
       ajustador: siniestro.ajustador,
       tipoEvento: siniestro.tipoEvento,
       vehiculo: siniestro.vehiculo,
+      colorVehiculo: siniestro.colorVehiculo,
       placas: siniestro.placas,
       asegurado: siniestro.asegurado,
       telefonoAsegurado: siniestro.telefonoAsegurado,

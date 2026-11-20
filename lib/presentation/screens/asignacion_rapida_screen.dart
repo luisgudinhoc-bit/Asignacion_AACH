@@ -63,6 +63,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
 
   bool _isGettingGps = false;
   bool _isResolvingLocation = false;
+  String? _parsedHoraAsignacion;
 
   @override
   void initState() {
@@ -213,6 +214,9 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
       if (parsed.observaciones != null && parsed.observaciones!.isNotEmpty) {
         _observacionesController.text = parsed.observaciones!;
       }
+      if (parsed.horaAsignacion != null && parsed.horaAsignacion!.isNotEmpty) {
+        _parsedHoraAsignacion = parsed.horaAsignacion;
+      }
 
       // Ajustador detectado por mención en WhatsApp
       if (parsed.ajustador != null && parsed.ajustador!.isNotEmpty) {
@@ -308,7 +312,17 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
       }
     }
 
-    final now = DateTime.now();
+    var now = DateTime.now();
+    if (_parsedHoraAsignacion != null) {
+      try {
+        final parts = _parsedHoraAsignacion!.split(':');
+        if (parts.length == 2) {
+          final h = int.parse(parts[0]);
+          final m = int.parse(parts[1]);
+          now = DateTime(now.year, now.month, now.day, h, m);
+        }
+      } catch (_) {}
+    }
 
     // Folio flexible: si está vacío se autogenera S/F con marca temporal
     final rawFolio = _folioController.text.trim();
@@ -382,13 +396,14 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
         ajustador: siniestroFinal.ajustador,
         tipoEvento: siniestroFinal.tipoEvento,
         vehiculo: siniestroFinal.vehiculo,
+        colorVehiculo: siniestroFinal.colorVehiculo,
         placas: siniestroFinal.placas,
         asegurado: siniestroFinal.asegurado,
         telefonoAsegurado: siniestroFinal.telefonoAsegurado,
         ubicacion: siniestroFinal.direccionCompleta,
         linkMaps: siniestroFinal.linkMaps,
         observaciones: siniestroFinal.observaciones,
-        fechaHora: now,
+        fechaHora: siniestroFinal.fechaAsignacion,
       );
 
       if (mode == SendMode.ajustador) {
@@ -457,6 +472,7 @@ class _AsignacionRapidaScreenState extends ConsumerState<AsignacionRapidaScreen>
     _mapsController.clear();
     _observacionesController.clear();
     _otroTipoEventoController.clear();
+    _parsedHoraAsignacion = null;
     setState(() {
       _selectedTipoEvento = 'Choque';
       _selectedAseguradora = 'Inbursa';
