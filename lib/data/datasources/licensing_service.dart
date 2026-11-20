@@ -51,9 +51,12 @@ class LicensingService {
 
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
-  // Hoja central de control de licencias de Luis Gudiño
+  // Hoja central de control de licencias de Luis Gudiño - Pestaña exclusiva para Despacho AACH
   static const String urlGoogleSheetCsv =
-      'https://docs.google.com/spreadsheets/d/11iwmA57GhfX--GZCY9ZGOSjN8Ah2Syhpu44LZii8NSs/export?format=csv';
+      'https://docs.google.com/spreadsheets/d/11iwmA57GhfX--GZCY9ZGOSjN8Ah2Syhpu44LZii8NSs/gviz/tq?tqx=out:csv&sheet=Licencias%20AACH';
+
+  static const String urlGoogleSheetCsvFallback =
+      'https://docs.google.com/spreadsheets/d/11iwmA57GhfX--GZCY9ZGOSjN8Ah2Syhpu44LZii8NSs/export?format=csv&gid=1743757425';
 
   String? _cachedDeviceId;
   String? _cachedDeviceName;
@@ -315,15 +318,40 @@ class LicensingService {
 
     // 1. INTENTO DE CONSULTA EN VIVO A GOOGLE SHEETS
     try {
-      final urlConBuster = '$urlGoogleSheetCsv&t=${DateTime.now().millisecondsSinceEpoch}';
-      final responseSheet = await http.get(
-        Uri.parse(urlConBuster),
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-        },
-      ).timeout(const Duration(seconds: 6));
+      http.Response responseSheet;
+      try {
+        final urlConBuster = '$urlGoogleSheetCsv&t=${DateTime.now().millisecondsSinceEpoch}';
+        responseSheet = await http.get(
+          Uri.parse(urlConBuster),
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        ).timeout(const Duration(seconds: 6));
+      } catch (_) {
+        final urlFallback = '$urlGoogleSheetCsvFallback&t=${DateTime.now().millisecondsSinceEpoch}';
+        responseSheet = await http.get(
+          Uri.parse(urlFallback),
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        ).timeout(const Duration(seconds: 6));
+      }
+
+      if (responseSheet.statusCode != 200) {
+        final urlFallback = '$urlGoogleSheetCsvFallback&t=${DateTime.now().millisecondsSinceEpoch}';
+        responseSheet = await http.get(
+          Uri.parse(urlFallback),
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        ).timeout(const Duration(seconds: 6));
+      }
 
       if (responseSheet.statusCode == 200 && responseSheet.body.isNotEmpty) {
         final bodyTrim = responseSheet.body.trim().toLowerCase();

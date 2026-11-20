@@ -767,7 +767,7 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
                         child: OutlinedButton.icon(
                           onPressed: () async {
                             final uri = Uri.parse(
-                                'https://docs.google.com/spreadsheets/d/11iwmA57GhfX--GZCY9ZGOSjN8Ah2Syhpu44LZii8NSs');
+                                'https://docs.google.com/spreadsheets/d/11iwmA57GhfX--GZCY9ZGOSjN8Ah2Syhpu44LZii8NSs/edit#gid=1743757425');
                             if (await canLaunchUrl(uri)) {
                               await launchUrl(uri, mode: LaunchMode.externalApplication);
                             }
