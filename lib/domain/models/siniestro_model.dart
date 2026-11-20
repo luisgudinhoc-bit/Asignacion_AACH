@@ -269,100 +269,140 @@ class SiniestroModel {
   /// Alias de toSheetsRowAtoF para compatibilidad
   List<dynamic> toSheetsRow() => toSheetsRowAtoF();
 
+  /// Retorna las 4 columnas de estatus operativo para L:O (Columnas 12 a 15 de Sheets)
+  /// Col L: ESTATUS | Col M: FECHA ARRIBO | Col N: FECHA CONCLUSION | Col O: TIPO CIERRE
+  List<dynamic> toSheetsStatusCols() {
+    final diaArr = fechaArribo != null
+        ? '${fechaArribo!.day.toString().padLeft(2, '0')}/${fechaArribo!.month.toString().padLeft(2, '0')}/${fechaArribo!.year} ${fechaArribo!.hour.toString().padLeft(2, '0')}:${fechaArribo!.minute.toString().padLeft(2, '0')}:${fechaArribo!.second.toString().padLeft(2, '0')}'
+        : '';
+    final diaCon = fechaConclusion != null
+        ? '${fechaConclusion!.day.toString().padLeft(2, '0')}/${fechaConclusion!.month.toString().padLeft(2, '0')}/${fechaConclusion!.year} ${fechaConclusion!.hour.toString().padLeft(2, '0')}:${fechaConclusion!.minute.toString().padLeft(2, '0')}:${fechaConclusion!.second.toString().padLeft(2, '0')}'
+        : '';
+    return [
+      estatus.displayName, // Col L (11)
+      diaArr,             // Col M (12)
+      diaCon,             // Col N (13)
+      tipoCierre ?? '',   // Col O (14)
+    ];
+  }
+
+  /// Helper estático para parsear fechas con tolerancia a múltiples formatos
+  static DateTime? _parseFecha(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+
+    final iso = DateTime.tryParse(trimmed);
+    if (iso != null) return iso;
+
+    try {
+      if (trimmed.contains('/')) {
+        final parts = trimmed.split(' ');
+        final dateParts = parts[0].split('/');
+        if (dateParts.length == 3) {
+          final d = int.parse(dateParts[0]);
+          final m = int.parse(dateParts[1]);
+          final y = int.parse(dateParts[2]);
+          int h = 0, min = 0, sec = 0;
+          if (parts.length > 1 && parts[1].contains(':')) {
+            final tParts = parts[1].split(':');
+            h = int.parse(tParts[0]);
+            if (tParts.length > 1) min = int.parse(tParts[1]);
+            if (tParts.length > 2) sec = int.parse(tParts[2]);
+          }
+          return DateTime(y, m, d, h, min, sec);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// Construye un modelo desde una fila leída de Google Sheets
   factory SiniestroModel.fromSheetsRow(List<dynamic> row, {int? rowNumber}) {
     String getCol(int index) => index < row.length ? row[index].toString().trim() : '';
 
-    // Si la hoja tiene el formato operativo AACH (Columnas A a F / A a K)
-    if (row.length <= 11) {
-      final fechaRaw = getCol(0);
-      DateTime parsedFecha = DateTime.now();
-      if (fechaRaw.isNotEmpty) {
-        // Intento parsear DD/MM/YYYY o DD/MM/YYYY HH:mm o ISO
-        try {
-          if (fechaRaw.contains('/')) {
-            final parts = fechaRaw.split(' ');
-            final dateParts = parts[0].split('/');
-            if (dateParts.length == 3) {
-              final d = int.parse(dateParts[0]);
-              final m = int.parse(dateParts[1]);
-              final y = int.parse(dateParts[2]);
-              int h = 0;
-              int min = 0;
-              if (parts.length > 1 && parts[1].contains(':')) {
-                final timeParts = parts[1].split(':');
-                h = int.parse(timeParts[0]);
-                min = int.parse(timeParts[1]);
-              }
-              parsedFecha = DateTime(y, m, d, h, min);
-            }
-          } else {
-            parsedFecha = DateTime.tryParse(fechaRaw) ?? DateTime.now();
-          }
-        } catch (_) {
-          parsedFecha = DateTime.now();
-        }
-      }
-
-      final rawUbicacion = getCol(4);
-      String ubi = rawUbicacion;
-      String maps = '';
-      if (rawUbicacion.contains('• http')) {
-        final splitUbi = rawUbicacion.split('•');
-        ubi = splitUbi[0].trim();
-        maps = splitUbi.sublist(1).join('•').trim();
-      } else if (rawUbicacion.startsWith('http')) {
-        maps = rawUbicacion;
-      }
-
-      final rawVehiculo = getCol(5);
-      String veh = rawVehiculo;
-      String pla = '';
-      if (rawVehiculo.contains('(') && rawVehiculo.endsWith(')')) {
-        final match = RegExp(r'^(.*?)\s*\((.*?)\)$').firstMatch(rawVehiculo);
-        if (match != null) {
-          veh = match.group(1)?.trim() ?? rawVehiculo;
-          pla = match.group(2)?.trim() ?? '';
-        }
-      }
-
+    // Si es formato legado extendido con ID en Col 0 (> 15 cols y Col 0 parece UUID)
+    if (row.length > 15 && getCol(0).length >= 32 && getCol(0).contains('-')) {
       return SiniestroModel(
-        id: const Uuid().v4(),
-        folio: getCol(3),
+        id: getCol(0),
+        folio: getCol(1),
         aseguradora: getCol(2).isNotEmpty ? getCol(2) : 'Inbursa',
-        ajustador: getCol(1),
-        estatus: SiniestroEstatus.asignado,
-        tipoEvento: 'Choque',
-        ubicacion: ubi,
-        linkMaps: maps,
-        vehiculo: veh,
-        placas: pla,
-        fechaAsignacion: parsedFecha,
+        ajustador: getCol(3),
+        estatus: SiniestroEstatus.fromString(getCol(4)),
+        tipoEvento: getCol(5).isNotEmpty ? getCol(5) : 'Choque',
+        ubicacion: getCol(6),
+        linkMaps: getCol(7),
+        asegurado: getCol(8),
+        telefonoAsegurado: getCol(9),
+        vehiculo: getCol(10),
+        colorVehiculo: getCol(11),
+        placas: getCol(12),
+        poliza: getCol(13),
+        fechaArribo: _parseFecha(getCol(16)),
+        fechaConclusion: _parseFecha(getCol(17)),
+        tipoCierre: getCol(18).isNotEmpty ? getCol(18) : null,
+        observaciones: getCol(19),
         sincronizado: true,
         rowNumberSheets: rowNumber,
       );
     }
 
-    // Formato legado extendido (> 11 columnas)
+    // Formato operativo AACH estándar (Columnas A a F o A a O)
+    final fechaRaw = getCol(0);
+    DateTime parsedFecha = _parseFecha(fechaRaw) ?? DateTime.now();
+
+    final rawUbicacion = getCol(4);
+    String ubi = rawUbicacion;
+    String maps = '';
+    if (rawUbicacion.contains('• http')) {
+      final splitUbi = rawUbicacion.split('•');
+      ubi = splitUbi[0].trim();
+      maps = splitUbi.sublist(1).join('•').trim();
+    } else if (rawUbicacion.startsWith('http')) {
+      maps = rawUbicacion;
+    }
+
+    final rawVehiculo = getCol(5);
+    String veh = rawVehiculo;
+    String pla = '';
+    if (rawVehiculo.contains('(') && rawVehiculo.endsWith(')')) {
+      final match = RegExp(r'^(.*?)\s*\((.*?)\)$').firstMatch(rawVehiculo);
+      if (match != null) {
+        veh = match.group(1)?.trim() ?? rawVehiculo;
+        pla = match.group(2)?.trim() ?? '';
+      }
+    }
+
+    // Columnas L:O (11 a 14) si están presentes
+    final estatusCol = getCol(11);
+    final arriboCol = getCol(12);
+    final conclusionCol = getCol(13);
+    final cierreCol = getCol(14);
+
+    final parsedArribo = _parseFecha(arriboCol);
+    final parsedConclusion = _parseFecha(conclusionCol);
+
+    SiniestroEstatus estatusCalculado = SiniestroEstatus.fromString(estatusCol);
+    if (parsedConclusion != null) {
+      estatusCalculado = SiniestroEstatus.concluido;
+    } else if (parsedArribo != null && estatusCalculado == SiniestroEstatus.asignado) {
+      estatusCalculado = SiniestroEstatus.enAtencion;
+    }
+
     return SiniestroModel(
-      id: getCol(0).isNotEmpty ? getCol(0) : const Uuid().v4(),
-      folio: getCol(1),
+      id: const Uuid().v4(),
+      folio: getCol(3),
       aseguradora: getCol(2).isNotEmpty ? getCol(2) : 'Inbursa',
-      ajustador: getCol(3),
-      estatus: SiniestroEstatus.fromString(getCol(4)),
-      tipoEvento: getCol(5).isNotEmpty ? getCol(5) : 'Choque',
-      ubicacion: getCol(6),
-      linkMaps: getCol(7),
-      asegurado: getCol(8),
-      telefonoAsegurado: getCol(9),
-      vehiculo: getCol(10),
-      colorVehiculo: getCol(11),
-      placas: getCol(12),
-      poliza: getCol(13),
-      fechaArribo: getCol(16).isNotEmpty ? DateTime.tryParse(getCol(16)) : null,
-      fechaConclusion: getCol(17).isNotEmpty ? DateTime.tryParse(getCol(17)) : null,
-      tipoCierre: getCol(18).isNotEmpty ? getCol(18) : null,
-      observaciones: getCol(19),
+      ajustador: getCol(1),
+      estatus: estatusCalculado,
+      tipoEvento: 'Choque',
+      ubicacion: ubi,
+      linkMaps: maps,
+      vehiculo: veh,
+      placas: pla,
+      fechaAsignacion: parsedFecha,
+      fechaArribo: parsedArribo,
+      fechaConclusion: parsedConclusion,
+      tipoCierre: cierreCol.isNotEmpty ? cierreCol : null,
       sincronizado: true,
       rowNumberSheets: rowNumber,
     );

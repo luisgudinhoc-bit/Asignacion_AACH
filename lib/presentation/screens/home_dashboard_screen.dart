@@ -82,6 +82,13 @@ class _TableroOperativoView extends ConsumerWidget {
     final countAsignados = allSiniestros.where((s) => s.estatus.name == 'asignado').length;
     final countAtencion = allSiniestros.where((s) => s.estatus.name == 'enAtencion').length;
 
+    // Auto-recargar lista si el motor de sincronización detectó cambios de Arribo/Cierre en Sheets
+    ref.listen(syncManagerProvider, (prev, next) {
+      if (prev?.lastSyncTime != next.lastSyncTime) {
+        ref.read(siniestroListProvider.notifier).loadSiniestros();
+      }
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -102,8 +109,9 @@ class _TableroOperativoView extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Sincronizar ahora',
-            onPressed: () {
-              ref.read(syncManagerProvider).processQueue();
+            onPressed: () async {
+              await ref.read(syncManagerProvider).processQueue();
+              await ref.read(syncManagerProvider).pullFromRemote();
               ref.read(siniestroListProvider.notifier).loadSiniestros();
             },
           ),
@@ -111,8 +119,9 @@ class _TableroOperativoView extends ConsumerWidget {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.read(siniestroListProvider.notifier).loadSiniestros();
           await ref.read(syncManagerProvider).processQueue();
+          await ref.read(syncManagerProvider).pullFromRemote();
+          ref.read(siniestroListProvider.notifier).loadSiniestros();
         },
         child: Column(
           children: [

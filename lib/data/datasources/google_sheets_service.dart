@@ -1,3 +1,4 @@
+import 'package:csv/csv.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
@@ -223,8 +224,14 @@ class GoogleSheetsService {
       // Escribir encabezados si no existen
       await _writeHeadersIfEmpty(
         spreadsheetId,
-        '${SheetsConfig.tabSiniestros}!A1:K1',
+        '${SheetsConfig.tabSiniestros}!A1:O1',
         SheetsConfig.siniestrosHeaders,
+      );
+      // Garantizar que las columnas operativas de estatus (L1:O1) tengan sus etiquetas
+      await _writeHeadersIfEmpty(
+        spreadsheetId,
+        '${SheetsConfig.tabSiniestros}!L1:O1',
+        ['ESTATUS', 'FECHA ARRIBO', 'FECHA CONCLUSION', 'TIPO CIERRE'],
       );
       await _writeHeadersIfEmpty(
         spreadsheetId,
@@ -312,10 +319,10 @@ class GoogleSheetsService {
     }
   }
 
-  // ==================== OPERACIONES SINIESTROS (COLUMNAS A A F) ====================
+  // ==================== OPERACIONES SINIESTROS (COLUMNAS A A F Y L A O) ====================
 
   /// Agrega un nuevo siniestro escribiendo estrictamente en las columnas A a F
-  /// Col A: FECHA | Col B: AJUSTADOR | Col C: ASEGURADORA | Col D: REPORTE | Col E: UBICACIÓN SIN. | Col F: VEHICULO
+  /// y registrando el estatus inicial en las columnas L a O
   /// Respeta íntegramente las columnas G:K (ATENCION, CASETAS, OTROS, KILOMETRAJE, TOTAL)
   Future<int?> appendSiniestro(String spreadsheetId, SiniestroModel siniestro) async {
     _assertAuthenticated();
@@ -333,13 +340,25 @@ class GoogleSheetsService {
           final val = row.isNotEmpty ? row[0].toString().trim() : '';
           if (val.isEmpty) {
             final targetRow = i + 2; // +2 por encabezado y 1-based index
-            final updateRange = '${SheetsConfig.tabSiniestros}!A$targetRow:F$targetRow';
+            final updateRangeAF = '${SheetsConfig.tabSiniestros}!A$targetRow:F$targetRow';
             await _sheetsApi!.spreadsheets.values.update(
               sheets.ValueRange(values: [siniestro.toSheetsRowAtoF()]),
               spreadsheetId,
-              updateRange,
+              updateRangeAF,
               valueInputOption: 'USER_ENTERED',
             );
+
+            // Escribir columnas de estatus L:O
+            try {
+              final updateRangeLO = '${SheetsConfig.tabSiniestros}!L$targetRow:O$targetRow';
+              await _sheetsApi!.spreadsheets.values.update(
+                sheets.ValueRange(values: [siniestro.toSheetsStatusCols()]),
+                spreadsheetId,
+                updateRangeLO,
+                valueInputOption: 'USER_ENTERED',
+              );
+            } catch (_) {}
+
             return targetRow;
           }
         }
@@ -365,29 +384,53 @@ class GoogleSheetsService {
     if (updatedRange != null) {
       final match = RegExp(r'!A(\d+):').firstMatch(updatedRange);
       if (match != null) {
-        return int.tryParse(match.group(1)!);
+        final rowNum = int.tryParse(match.group(1)!);
+        if (rowNum != null) {
+          try {
+            final updateRangeLO = '${SheetsConfig.tabSiniestros}!L$rowNum:O$rowNum';
+            await _sheetsApi!.spreadsheets.values.update(
+              sheets.ValueRange(values: [siniestro.toSheetsStatusCols()]),
+              spreadsheetId,
+              updateRangeLO,
+              valueInputOption: 'USER_ENTERED',
+            );
+          } catch (_) {}
+        }
+        return rowNum;
       }
     }
     return null;
   }
 
-  /// Actualiza un siniestro existente en la hoja tocando únicamente las columnas A a F
+  /// Actualiza un siniestro existente en la hoja tocando columnas A a F y columnas L a O (Estatus/Arribo/Cierre)
   Future<void> updateSiniestro(String spreadsheetId, SiniestroModel siniestro) async {
     _assertAuthenticated();
 
-    // 1. Si ya se conoce el número de fila, actualizar únicamente A:F
-    if (siniestro.rowNumberSheets != null && siniestro.rowNumberSheets! > 1) {
-      final range = '${SheetsConfig.tabSiniestros}!A${siniestro.rowNumberSheets}:F${siniestro.rowNumberSheets}';
-      final valueRange = sheets.ValueRange(
-        range: range,
-        values: [siniestro.toSheetsRowAtoF()],
-      );
+    Future<void> doRowUpdate(int targetRow) async {
+      final rangeAF = '${SheetsConfig.tabSiniestros}!A$targetRow:F$targetRow';
       await _sheetsApi!.spreadsheets.values.update(
-        valueRange,
+        sheets.ValueRange(range: rangeAF, values: [siniestro.toSheetsRowAtoF()]),
         spreadsheetId,
-        range,
+        rangeAF,
         valueInputOption: 'USER_ENTERED',
       );
+
+      try {
+        final rangeLO = '${SheetsConfig.tabSiniestros}!L$targetRow:O$targetRow';
+        await _sheetsApi!.spreadsheets.values.update(
+          sheets.ValueRange(range: rangeLO, values: [siniestro.toSheetsStatusCols()]),
+          spreadsheetId,
+          rangeLO,
+          valueInputOption: 'USER_ENTERED',
+        );
+      } catch (e) {
+        debugPrint('Aviso al actualizar estatus L:O en Sheets: $e');
+      }
+    }
+
+    // 1. Si ya se conoce el número de fila
+    if (siniestro.rowNumberSheets != null && siniestro.rowNumberSheets! > 1) {
+      await doRowUpdate(siniestro.rowNumberSheets!);
       return;
     }
 
@@ -410,29 +453,19 @@ class GoogleSheetsService {
     }
 
     if (targetRow > 1) {
-      final range = '${SheetsConfig.tabSiniestros}!A$targetRow:F$targetRow';
-      final valueRange = sheets.ValueRange(
-        range: range,
-        values: [siniestro.toSheetsRowAtoF()],
-      );
-      await _sheetsApi!.spreadsheets.values.update(
-        valueRange,
-        spreadsheetId,
-        range,
-        valueInputOption: 'USER_ENTERED',
-      );
+      await doRowUpdate(targetRow);
     } else {
-      // Si no fue encontrado, anexarlo como nueva fila en A:F
+      // Si no fue encontrado, anexarlo como nueva fila
       await appendSiniestro(spreadsheetId, siniestro);
     }
   }
 
-  /// Lee los siniestros registrados en Google Sheets (Columnas A a F)
+  /// Lee los siniestros registrados en Google Sheets (Columnas A a O)
   Future<List<SiniestroModel>> fetchSiniestros(String spreadsheetId) async {
     _assertAuthenticated();
     final response = await _sheetsApi!.spreadsheets.values.get(
       spreadsheetId,
-      '${SheetsConfig.tabSiniestros}!A2:F',
+      '${SheetsConfig.tabSiniestros}!A2:O',
     );
 
     final list = <SiniestroModel>[];
@@ -447,6 +480,33 @@ class GoogleSheetsService {
             final rowNumber = i + 2;
             list.add(SiniestroModel.fromSheetsRow(row, rowNumber: rowNumber));
           }
+        }
+      }
+    }
+    return list;
+  }
+
+  /// Lee siniestros mediante endpoint gviz/tq CSV como respaldo offline/sin-login
+  Future<List<SiniestroModel>> fetchSiniestrosViaGviz(String spreadsheetId) async {
+    final url =
+        'https://docs.google.com/spreadsheets/d/$spreadsheetId/gviz/tq?tqx=out:csv&sheet=${SheetsConfig.tabSiniestros}';
+    final response = await http.get(Uri.parse(url));
+    if (response.statusCode != 200) {
+      throw Exception('Error al descargar hoja vía CSV (HTTP ${response.statusCode})');
+    }
+
+    final rows = const CsvToListConverter(shouldParseNumbers: false).convert(response.body);
+    final list = <SiniestroModel>[];
+
+    // Fila 0 es encabezado
+    for (int i = 1; i < rows.length; i++) {
+      final row = rows[i];
+      if (row.isNotEmpty) {
+        final folio = row.length > 3 ? row[3].toString().trim() : '';
+        final fecha = row.isNotEmpty ? row[0].toString().trim() : '';
+        if (folio.isNotEmpty || fecha.isNotEmpty) {
+          final rowNumber = i + 1;
+          list.add(SiniestroModel.fromSheetsRow(row, rowNumber: rowNumber));
         }
       }
     }

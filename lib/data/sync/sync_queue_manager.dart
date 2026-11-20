@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import '../../core/constants/app_constants.dart';
 import '../../domain/models/siniestro_model.dart';
 import '../../domain/models/sync_item_model.dart';
 import '../datasources/google_sheets_service.dart';
@@ -21,6 +22,7 @@ class SyncQueueManager extends ChangeNotifier {
   final GoogleSheetsService _sheetsService;
   final SiniestroRepository _siniestroRepository;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  Timer? _autoPullTimer;
 
   SyncState _state = SyncState.synced;
   String? _lastErrorMessage;
@@ -40,6 +42,17 @@ class SyncQueueManager extends ChangeNotifier {
         _siniestroRepository = siniestroRepository {
     _initConnectivityListener();
     _refreshPendingCount();
+    _startAutoPullTimer();
+  }
+
+  void _startAutoPullTimer() {
+    // Sondeo periódico cada 20 segundos para recibir Arribo y Cierre en vivo desde campo
+    _autoPullTimer?.cancel();
+    _autoPullTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (_state != SyncState.syncing) {
+        pullFromRemote();
+      }
+    });
   }
 
   void _refreshPendingCount() {
@@ -58,6 +71,9 @@ class SyncQueueManager extends ChangeNotifier {
       if (hasConnection && _pendingCount > 0 && _state != SyncState.syncing) {
         debugPrint('Conectividad detectada. Disparando sincronización en segundo plano...');
         processQueue();
+      }
+      if (hasConnection && _state != SyncState.syncing) {
+        pullFromRemote();
       }
     });
   }
@@ -130,9 +146,14 @@ class SyncQueueManager extends ChangeNotifier {
   }
 
   /// Descarga y fusiona los registros remotos de Google Sheets a la base local
+  /// (Detecta automáticamente Arribos y Cierres enviados por MAGG Receptor)
   Future<void> pullFromRemote() async {
-    final spreadsheetId = LocalStorageService.getSpreadsheetId();
-    if (spreadsheetId.isEmpty || !_sheetsService.isSignedIn) {
+    String spreadsheetId = LocalStorageService.getSpreadsheetId();
+    if (spreadsheetId.trim().isEmpty) {
+      spreadsheetId = AppConstants.defaultSpreadsheetId;
+    }
+
+    if (spreadsheetId.trim().isEmpty) {
       return;
     }
 
@@ -140,16 +161,99 @@ class SyncQueueManager extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final remoteList = await _sheetsService.fetchSiniestros(spreadsheetId);
-      for (final remote in remoteList) {
-        final local = LocalStorageService.getSiniestroById(remote.id);
-        if (local == null) {
-          // No existe localmente, guardarlo como sincronizado
-          await LocalStorageService.saveSiniestro(remote.copyWith(sincronizado: true));
+      List<SiniestroModel> remoteList = [];
+
+      // 1. Intentar primero con la API autenticada si hay sesión
+      if (_sheetsService.isSignedIn) {
+        try {
+          remoteList = await _sheetsService.fetchSiniestros(spreadsheetId);
+        } catch (apiErr) {
+          debugPrint('Aviso al consultar Sheets API, intentando gviz fallback: $apiErr');
         }
       }
+
+      // 2. Si no hay sesión o falló la API, usar el fallback público gviz/tq CSV
+      if (remoteList.isEmpty) {
+        try {
+          remoteList = await _sheetsService.fetchSiniestrosViaGviz(spreadsheetId);
+        } catch (gvizErr) {
+          debugPrint('Error en fallback gviz: $gvizErr');
+        }
+      }
+
+      if (remoteList.isEmpty) {
+        _state = SyncState.synced;
+        _lastSyncTime = DateTime.now();
+        notifyListeners();
+        return;
+      }
+
+      // 3. Fusionar con registros locales emparejando por Folio
+      final allLocales = LocalStorageService.getSiniestros();
+      bool huboCambios = false;
+
+      for (final remote in remoteList) {
+        final rFolio = remote.folio.trim().toLowerCase();
+        if (rFolio.isEmpty) continue;
+
+        final local = allLocales.where((s) => s.folio.trim().toLowerCase() == rFolio).firstOrNull;
+
+        if (local == null) {
+          // No existe localmente: registrar como nuevo
+          await LocalStorageService.saveSiniestro(remote.copyWith(sincronizado: true));
+          huboCambios = true;
+        } else {
+          // Ya existe: verificar si el remoto trae Arribo o Conclusión desde MAGG
+          bool changed = false;
+          SiniestroModel updated = local;
+
+          // Arribo reportado
+          if (remote.fechaArribo != null &&
+              (local.fechaArribo == null || local.estatus == SiniestroEstatus.asignado)) {
+            updated = updated.copyWith(
+              fechaArribo: remote.fechaArribo,
+              estatus: remote.estatus != SiniestroEstatus.asignado
+                  ? remote.estatus
+                  : SiniestroEstatus.enAtencion,
+            );
+            changed = true;
+          }
+
+          // Conclusión reportada
+          if (remote.fechaConclusion != null &&
+              (local.fechaConclusion == null || local.estatus != SiniestroEstatus.concluido)) {
+            updated = updated.copyWith(
+              fechaConclusion: remote.fechaConclusion,
+              tipoCierre: remote.tipoCierre ?? local.tipoCierre,
+              estatus: SiniestroEstatus.concluido,
+            );
+            changed = true;
+          }
+
+          // Cambio de estatus general
+          if (remote.estatus != local.estatus && remote.estatus != SiniestroEstatus.asignado) {
+            updated = updated.copyWith(estatus: remote.estatus);
+            changed = true;
+          }
+
+          // Guardar número de fila en Sheets si se detectó
+          if (remote.rowNumberSheets != null && local.rowNumberSheets != remote.rowNumberSheets) {
+            updated = updated.copyWith(rowNumberSheets: remote.rowNumberSheets);
+            changed = true;
+          }
+
+          if (changed) {
+            await LocalStorageService.saveSiniestro(updated.copyWith(sincronizado: true));
+            huboCambios = true;
+          }
+        }
+      }
+
       _lastSyncTime = DateTime.now();
       _state = SyncState.synced;
+      if (huboCambios) {
+        notifyListeners();
+      }
     } catch (e) {
       _state = SyncState.error;
       _lastErrorMessage = e.toString();
@@ -160,6 +264,7 @@ class SyncQueueManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    _autoPullTimer?.cancel();
     _connectivitySubscription?.cancel();
     super.dispose();
   }

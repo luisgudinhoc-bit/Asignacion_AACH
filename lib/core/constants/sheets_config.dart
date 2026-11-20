@@ -5,19 +5,23 @@ class SheetsConfig {
   static const String tabCatalogo = 'CATALOGO_ASEGURADORAS';
   static const String tabHistorialCortes = 'HISTORIAL_CORTES';
 
-  /// Encabezados de la hoja maestra de Siniestros (Columnas A a K de la hoja operativa AACH)
+  /// Encabezados de la hoja maestra de Siniestros (Columnas A a O de la hoja operativa AACH)
   static const List<String> siniestrosHeaders = [
-    'FECHA',          // Col A
-    'AJUSTADOR',      // Col B
-    'ASEGURADORA',    // Col C
-    'REPORTE',        // Col D
-    'UBICACIÓN SIN.', // Col E
-    'VEHICULO',       // Col F
-    'ATENCION',       // Col G (para cabina / liquidación)
-    'CASETAS',        // Col H (gastos)
-    'OTROS',          // Col I (gastos adicionales)
-    'KILOMETRAJE',    // Col J (kilometraje recorrido)
-    'TOTAL',          // Col K (total liquidado)
+    'FECHA',            // Col A (0)
+    'AJUSTADOR',        // Col B (1)
+    'ASEGURADORA',      // Col C (2)
+    'REPORTE',          // Col D (3)
+    'UBICACIÓN SIN.',   // Col E (4)
+    'VEHICULO',         // Col F (5)
+    'ATENCION',         // Col G (6) (para cabina / liquidación)
+    'CASETAS',          // Col H (7) (gastos)
+    'OTROS',            // Col I (8) (gastos adicionales)
+    'KILOMETRAJE',      // Col J (9) (kilometraje recorrido)
+    'TOTAL',            // Col K (10) (total liquidado)
+    'ESTATUS',          // Col L (11) (Asignado / En Atención / Concluido)
+    'FECHA ARRIBO',     // Col M (12)
+    'FECHA CONCLUSION', // Col N (13)
+    'TIPO CIERRE',      // Col O (14)
   ];
 
   /// Encabezados de la pestaña de Ajustadores
