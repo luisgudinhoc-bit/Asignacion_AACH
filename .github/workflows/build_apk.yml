@@ -7,6 +7,9 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build & Test APK
@@ -47,3 +50,27 @@ jobs:
           name: Asignacion-AACH-Release-APK
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+      - name: Publicar Release Oficial Asignación AACH
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/heads/main')
+        with:
+          tag_name: v1.1.0-cloud-sync
+          name: "Asignación AACH v1.1.0 (Monitoreo en Tiempo Real L:O)"
+          draft: false
+          prerelease: false
+          make_latest: true
+          body: |
+            ### 📱 Asignación AACH v1.1.0 - Sincronización en Tiempo Real
+            - 📡 **Monitoreo en Vivo de Columnas L a O**:
+              - Detecta automáticamente cuando el ajustador presiona **Arribo** en MAGG.
+              - Registra y muestra la **Hora de Conclusión** y el **Tipo de Cierre** (Convenio, Volante, Pase, etc.).
+              - Auto-actualización en segundo plano cada 20 segundos y al deslizar pantalla (Pull-to-refresh).
+            - 📊 **Cálculo SLA y Tiempos de Respuesta**: Muestra el tiempo de traslado y atención automáticamente.
+            - 🛡️ **Hojas de Cálculo Intactas**: Conserva intactas las fórmulas operativas (G a K).
+            
+            **Descarga el archivo APK adjunto abajo e instálalo en tu celular de Cabina.**
+          files: |
+            build/app/outputs/flutter-apk/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
