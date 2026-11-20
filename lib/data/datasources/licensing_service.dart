@@ -58,6 +58,10 @@ class LicensingService {
   static const String urlGoogleSheetCsvFallback =
       'https://docs.google.com/spreadsheets/d/11iwmA57GhfX--GZCY9ZGOSjN8Ah2Syhpu44LZii8NSs/export?format=csv&gid=1743757425';
 
+  // Hoja general de licencias como respaldo adicional
+  static const String urlGoogleSheetCsvGeneral =
+      'https://docs.google.com/spreadsheets/d/11iwmA57GhfX--GZCY9ZGOSjN8Ah2Syhpu44LZii8NSs/export?format=csv';
+
   String? _cachedDeviceId;
   String? _cachedDeviceName;
   EstadoLicencia? _cachedEstado;
@@ -306,6 +310,181 @@ class LicensingService {
     return false;
   }
 
+  /// Descarga y limpia el CSV de una URL con Cache-Buster y detección de portal cautivo
+  Future<List<String>?> _descargarLineasCsv(String url, {String? fallbackUrl}) async {
+    for (final targetUrl in [url, if (fallbackUrl != null) fallbackUrl]) {
+      try {
+        final sep = targetUrl.contains('?') ? '&' : '?';
+        final urlConBuster = '$targetUrl${sep}t=${DateTime.now().millisecondsSinceEpoch}';
+        final resp = await http.get(
+          Uri.parse(urlConBuster),
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        ).timeout(const Duration(seconds: 6));
+
+        if (resp.statusCode == 200 && resp.body.isNotEmpty) {
+          final bodyTrim = resp.body.trim().toLowerCase();
+          final esHtml = bodyTrim.startsWith('<html') ||
+              bodyTrim.startsWith('<!doctype') ||
+              bodyTrim.contains('<head') ||
+              bodyTrim.contains('<body');
+          if (!esHtml) {
+            final lineas = resp.body.split(RegExp(r'\r?\n'));
+            if (lineas.isNotEmpty) return lineas;
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Procesa líneas de CSV con detección dinámica de columnas en Fila 1 y evalúa el estatus del equipo
+  Future<EstadoLicencia?> _verificarEnCsvLineas(List<String> lineas, String devId, String devName) async {
+    if (lineas.isEmpty) return null;
+
+    int idxDeviceId = 0;
+    int idxNombre = 1;
+    int idxEstado = 2;
+    int idxTipo = 3;
+    int idxVencimiento = 5;
+
+    final headerCols = _parsearCsvLinea(lineas[0]);
+    for (int c = 0; c < headerCols.length; c++) {
+      final colName = headerCols[c].toUpperCase();
+      if (colName.contains('DISPOSITIVO') || colName.contains('CODIGO') || colName.contains('ID')) {
+        idxDeviceId = c;
+      } else if (colName.contains('NOMBRE') || colName.contains('USUARIO') || colName.contains('TITULAR')) {
+        idxNombre = c;
+      } else if (colName.contains('ESTADO') || colName.contains('STATUS')) {
+        idxEstado = c;
+      } else if (colName.contains('TIPO')) {
+        idxTipo = c;
+      } else if (colName.contains('VENCIMIENTO') || colName.contains('EXPIRA') || colName.contains('FIN')) {
+        idxVencimiento = c;
+      }
+    }
+
+    for (int i = 1; i < lineas.length; i++) {
+      final linea = lineas[i];
+      if (linea.trim().isEmpty) continue;
+      final columnas = _parsearCsvLinea(linea);
+
+      if (columnas.isNotEmpty && columnas.length > idxDeviceId) {
+        final idEnSheet = columnas[idxDeviceId].trim().toUpperCase();
+        if (idEnSheet.isEmpty) continue;
+
+        final devUpper = devId.trim().toUpperCase();
+        bool esMismoDispositivo = false;
+
+        if (idEnSheet == devUpper) {
+          esMismoDispositivo = true;
+        } else {
+          final devParts = devUpper.split('_');
+          final sheetParts = idEnSheet.split('_');
+          if (devParts.length >= 3 && sheetParts.length >= 3) {
+            final devSuffix = devParts.sublist(2).join('_');
+            final sheetSuffix = sheetParts.sublist(2).join('_');
+            if (devSuffix.isNotEmpty && devSuffix == sheetSuffix) {
+              esMismoDispositivo = true;
+            }
+          }
+        }
+
+        if (esMismoDispositivo) {
+          final nombreEnSheet = columnas.length > idxNombre ? columnas[idxNombre].trim() : 'Usuario AACH';
+          final estadoEnSheet = columnas.length > idxEstado ? columnas[idxEstado].trim().toUpperCase() : 'ACTIVO';
+          final tipoLic = columnas.length > idxTipo ? columnas[idxTipo].trim() : 'Asignacion AACH';
+          final vencimiento = columnas.length > idxVencimiento ? columnas[idxVencimiento].trim() : '31/12/2099';
+
+          final bool esBloqueadoExplicito = estadoEnSheet == 'BLOQUEADO' ||
+              estadoEnSheet == 'INACTIVO' ||
+              estadoEnSheet == 'SUSPENDIDO' ||
+              estadoEnSheet == 'BAJA' ||
+              estadoEnSheet == 'REVOCADO' ||
+              estadoEnSheet == 'CANCELADO' ||
+              estadoEnSheet == 'NO' ||
+              estadoEnSheet == 'FALSE' ||
+              estadoEnSheet == 'OFF' ||
+              estadoEnSheet.startsWith('BLOQ') ||
+              estadoEnSheet.startsWith('INACT');
+
+          final bool esActivoExplicito = estadoEnSheet == 'ACTIVO' ||
+              estadoEnSheet == 'SI' ||
+              estadoEnSheet == 'TRUE' ||
+              estadoEnSheet == 'AUTORIZADO' ||
+              estadoEnSheet == 'VIGENTE' ||
+              estadoEnSheet == 'OK' ||
+              estadoEnSheet == 'ADMIN';
+
+          final bool vencida = _estaVencida(vencimiento);
+
+          if (esBloqueadoExplicito) {
+            await _eliminarTokenLocal();
+            return EstadoLicencia(
+              autorizada: false,
+              deviceId: devId,
+              nombreDispositivo: devName,
+              titular: nombreEnSheet.isNotEmpty ? nombreEnSheet : 'Usuario AACH',
+              estado: estadoEnSheet,
+              tipoLicencia: tipoLic.isNotEmpty ? tipoLic : 'Asignacion AACH',
+              fechaVencimiento: vencimiento,
+              motivoBloqueo:
+                  'Dispositivo suspendido o bloqueado por Luis Gudiño en Google Sheets. Comunícate al +52 442 377 1473.',
+            );
+          }
+
+          if (vencida) {
+            await _eliminarTokenLocal();
+            return EstadoLicencia(
+              autorizada: false,
+              deviceId: devId,
+              nombreDispositivo: devName,
+              titular: nombreEnSheet.isNotEmpty ? nombreEnSheet : 'Usuario AACH',
+              estado: 'VENCIDO',
+              tipoLicencia: tipoLic.isNotEmpty ? tipoLic : 'Asignacion AACH',
+              fechaVencimiento: vencimiento,
+              motivoBloqueo:
+                  'El periodo de activación expiró el $vencimiento. Comunícate con Luis Gudiño (+52 442 377 1473).',
+            );
+          }
+
+          if (esActivoExplicito) {
+            final licOk = EstadoLicencia(
+              autorizada: true,
+              deviceId: devId,
+              nombreDispositivo: devName,
+              titular: nombreEnSheet.isNotEmpty ? nombreEnSheet : 'Usuario Autorizado',
+              estado: 'ACTIVO',
+              tipoLicencia: tipoLic.isNotEmpty ? tipoLic : 'Asignacion AACH',
+              fechaVencimiento: vencimiento.isNotEmpty ? vencimiento : '31/12/2099',
+              motivoBloqueo: '',
+            );
+            await _guardarTokenLocal(licOk);
+            return licOk;
+          }
+
+          await _eliminarTokenLocal();
+          return EstadoLicencia(
+            autorizada: false,
+            deviceId: devId,
+            nombreDispositivo: devName,
+            titular: nombreEnSheet,
+            estado: estadoEnSheet,
+            tipoLicencia: tipoLic,
+            fechaVencimiento: vencimiento,
+            motivoBloqueo:
+                'Estado "$estadoEnSheet" no autorizado. Contacta a Luis Gudiño (+52 442 377 1473).',
+          );
+        }
+      }
+    }
+
+    return null;
+  }
+
   /// Verifica si este dispositivo específico está en la lista autorizada en Google Sheets.
   /// Si está online: Consulta Google Sheets en tiempo real con Cache-Buster.
   /// Si está offline (sótano, carretera): Conserva acceso si ya estaba autorizado previamente (hasta 30 días).
@@ -318,239 +497,62 @@ class LicensingService {
 
     // 1. INTENTO DE CONSULTA EN VIVO A GOOGLE SHEETS
     try {
-      http.Response responseSheet;
-      try {
-        final urlConBuster = '$urlGoogleSheetCsv&t=${DateTime.now().millisecondsSinceEpoch}';
-        responseSheet = await http.get(
-          Uri.parse(urlConBuster),
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-          },
-        ).timeout(const Duration(seconds: 6));
-      } catch (_) {
-        final urlFallback = '$urlGoogleSheetCsvFallback&t=${DateTime.now().millisecondsSinceEpoch}';
-        responseSheet = await http.get(
-          Uri.parse(urlFallback),
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-          },
-        ).timeout(const Duration(seconds: 6));
+      // 1.1 Intentar pestaña específica 'Licencias AACH'
+      final lineasDespacho = await _descargarLineasCsv(urlGoogleSheetCsv, fallbackUrl: urlGoogleSheetCsvFallback);
+      if (lineasDespacho != null && lineasDespacho.isNotEmpty) {
+        final estado = await _verificarEnCsvLineas(lineasDespacho, devId, devName);
+        if (estado != null) {
+          return _cachedEstado = estado;
+        }
       }
 
-      if (responseSheet.statusCode != 200) {
-        final urlFallback = '$urlGoogleSheetCsvFallback&t=${DateTime.now().millisecondsSinceEpoch}';
-        responseSheet = await http.get(
-          Uri.parse(urlFallback),
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-          },
-        ).timeout(const Duration(seconds: 6));
+      // 1.2 Si no se encontró en 'Licencias AACH', intentar en la pestaña general
+      final lineasGeneral = await _descargarLineasCsv(urlGoogleSheetCsvGeneral);
+      if (lineasGeneral != null && lineasGeneral.isNotEmpty) {
+        final estado = await _verificarEnCsvLineas(lineasGeneral, devId, devName);
+        if (estado != null) {
+          return _cachedEstado = estado;
+        }
       }
 
-      if (responseSheet.statusCode == 200 && responseSheet.body.isNotEmpty) {
-        final bodyTrim = responseSheet.body.trim().toLowerCase();
-        final esHtml = bodyTrim.startsWith('<html') ||
-            bodyTrim.startsWith('<!doctype') ||
-            bodyTrim.contains('<head') ||
-            bodyTrim.contains('<body');
+      // 1.3 Si se consultó exitosamente Google Sheets pero el dispositivo NO está registrado en ninguna pestaña:
+      final localData = await _leerTokenLocal();
+      if (localData != null) {
+        final bool fueAutorizada = localData['autorizada'] as bool? ?? false;
+        final String savedId = localData['deviceId'] as String? ?? '';
+        final int timestampUltima = localData['ultimaVerificacion'] as int? ?? 0;
+        final diferenciaDias = (DateTime.now().millisecondsSinceEpoch - timestampUltima) / (1000 * 60 * 60 * 24);
 
-        if (esHtml) {
-          throw Exception('Respuesta no es CSV');
+        if (fueAutorizada && savedId.toUpperCase() == devId.toUpperCase() && diferenciaDias < 30) {
+          _cachedEstado = EstadoLicencia(
+            autorizada: true,
+            deviceId: devId,
+            nombreDispositivo: devName,
+            titular: localData['titular'] as String? ?? 'Usuario AACH',
+            estado: 'ACTIVO (Respaldo Local)',
+            tipoLicencia: localData['tipoLicencia'] as String? ?? 'Asignacion AACH',
+            fechaVencimiento: localData['fechaVencimiento'] as String? ?? '31/12/2099',
+            motivoBloqueo: '',
+          );
+          return _cachedEstado!;
         }
-
-        final lineas = responseSheet.body.split(RegExp(r'\r?\n'));
-        if (lineas.isNotEmpty) {
-          // Detectar columnas dinámicamente
-          int idxDeviceId = 0;
-          int idxNombre = 1;
-          int idxEstado = 2;
-          int idxTipo = 3;
-          int idxVencimiento = 5;
-
-          final headerCols = _parsearCsvLinea(lineas[0]);
-          for (int c = 0; c < headerCols.length; c++) {
-            final colName = headerCols[c].toUpperCase();
-            if (colName.contains('DISPOSITIVO') || colName.contains('CODIGO') || colName.contains('ID')) {
-              idxDeviceId = c;
-            } else if (colName.contains('NOMBRE') || colName.contains('USUARIO') || colName.contains('TITULAR')) {
-              idxNombre = c;
-            } else if (colName.contains('ESTADO') || colName.contains('STATUS')) {
-              idxEstado = c;
-            } else if (colName.contains('TIPO')) {
-              idxTipo = c;
-            } else if (colName.contains('VENCIMIENTO') || colName.contains('EXPIRA') || colName.contains('FIN')) {
-              idxVencimiento = c;
-            }
-          }
-
-          // Recorrer filas
-          for (int i = 1; i < lineas.length; i++) {
-            final linea = lineas[i];
-            if (linea.trim().isEmpty) continue;
-            final columnas = _parsearCsvLinea(linea);
-
-            if (columnas.isNotEmpty && columnas.length > idxDeviceId) {
-              final idEnSheet = columnas[idxDeviceId].trim().toUpperCase();
-              if (idEnSheet.isEmpty) continue;
-
-              final devUpper = devId.trim().toUpperCase();
-              bool esMismoDispositivo = false;
-
-              if (idEnSheet == devUpper) {
-                esMismoDispositivo = true;
-              } else {
-                // Coincidencia por partes de hardware
-                final devParts = devUpper.split('_');
-                final sheetParts = idEnSheet.split('_');
-                if (devParts.length >= 3 && sheetParts.length >= 3) {
-                  final devSuffix = devParts.sublist(2).join('_');
-                  final sheetSuffix = sheetParts.sublist(2).join('_');
-                  if (devSuffix.isNotEmpty && devSuffix == sheetSuffix) {
-                    esMismoDispositivo = true;
-                  }
-                }
-              }
-
-              if (esMismoDispositivo) {
-                final nombreEnSheet = columnas.length > idxNombre ? columnas[idxNombre].trim() : 'Usuario AACH';
-                final estadoEnSheet = columnas.length > idxEstado ? columnas[idxEstado].trim().toUpperCase() : 'ACTIVO';
-                final tipoLic = columnas.length > idxTipo ? columnas[idxTipo].trim() : 'Asignacion AACH';
-                final vencimiento = columnas.length > idxVencimiento ? columnas[idxVencimiento].trim() : '31/12/2099';
-
-                final bool esBloqueadoExplicito = estadoEnSheet == 'BLOQUEADO' ||
-                    estadoEnSheet == 'INACTIVO' ||
-                    estadoEnSheet == 'SUSPENDIDO' ||
-                    estadoEnSheet == 'BAJA' ||
-                    estadoEnSheet == 'REVOCADO' ||
-                    estadoEnSheet == 'CANCELADO' ||
-                    estadoEnSheet == 'NO' ||
-                    estadoEnSheet == 'FALSE' ||
-                    estadoEnSheet == 'OFF' ||
-                    estadoEnSheet.startsWith('BLOQ') ||
-                    estadoEnSheet.startsWith('INACT');
-
-                final bool esActivoExplicito = estadoEnSheet == 'ACTIVO' ||
-                    estadoEnSheet == 'SI' ||
-                    estadoEnSheet == 'TRUE' ||
-                    estadoEnSheet == 'AUTORIZADO' ||
-                    estadoEnSheet == 'VIGENTE' ||
-                    estadoEnSheet == 'OK' ||
-                    estadoEnSheet == 'ADMIN';
-
-                final bool vencida = _estaVencida(vencimiento);
-
-                if (esBloqueadoExplicito) {
-                  await _eliminarTokenLocal();
-                  _cachedEstado = EstadoLicencia(
-                    autorizada: false,
-                    deviceId: devId,
-                    nombreDispositivo: devName,
-                    titular: nombreEnSheet.isNotEmpty ? nombreEnSheet : 'Usuario AACH',
-                    estado: estadoEnSheet,
-                    tipoLicencia: tipoLic.isNotEmpty ? tipoLic : 'Asignacion AACH',
-                    fechaVencimiento: vencimiento,
-                    motivoBloqueo:
-                        'Dispositivo suspendido o bloqueado por Luis Gudiño en Google Sheets. Comunícate al +52 442 377 1473.',
-                  );
-                  return _cachedEstado!;
-                }
-
-                if (vencida) {
-                  await _eliminarTokenLocal();
-                  _cachedEstado = EstadoLicencia(
-                    autorizada: false,
-                    deviceId: devId,
-                    nombreDispositivo: devName,
-                    titular: nombreEnSheet.isNotEmpty ? nombreEnSheet : 'Usuario AACH',
-                    estado: 'VENCIDO',
-                    tipoLicencia: tipoLic.isNotEmpty ? tipoLic : 'Asignacion AACH',
-                    fechaVencimiento: vencimiento,
-                    motivoBloqueo:
-                        'El periodo de activación expiró el $vencimiento. Comunícate con Luis Gudiño (+52 442 377 1473).',
-                  );
-                  return _cachedEstado!;
-                }
-
-                if (esActivoExplicito) {
-                  final licOk = EstadoLicencia(
-                    autorizada: true,
-                    deviceId: devId,
-                    nombreDispositivo: devName,
-                    titular: nombreEnSheet.isNotEmpty ? nombreEnSheet : 'Usuario Autorizado',
-                    estado: 'ACTIVO',
-                    tipoLicencia: tipoLic.isNotEmpty ? tipoLic : 'Asignacion AACH',
-                    fechaVencimiento: vencimiento.isNotEmpty ? vencimiento : '31/12/2099',
-                    motivoBloqueo: '',
-                  );
-                  await _guardarTokenLocal(licOk);
-                  _cachedEstado = licOk;
-                  return _cachedEstado!;
-                }
-
-                // Estado desconocido
-                await _eliminarTokenLocal();
-                _cachedEstado = EstadoLicencia(
-                  autorizada: false,
-                  deviceId: devId,
-                  nombreDispositivo: devName,
-                  titular: nombreEnSheet,
-                  estado: estadoEnSheet,
-                  tipoLicencia: tipoLic,
-                  fechaVencimiento: vencimiento,
-                  motivoBloqueo:
-                      'Estado "$estadoEnSheet" no autorizado. Contacta a Luis Gudiño (+52 442 377 1473).',
-                );
-                return _cachedEstado!;
-              }
-            }
-          }
-        }
-
-        // Si se recorrió todo el Sheet y NO se encontró el Device ID:
-        final localData = await _leerTokenLocal();
-        if (localData != null) {
-          final bool fueAutorizada = localData['autorizada'] as bool? ?? false;
-          final String savedId = localData['deviceId'] as String? ?? '';
-          final int timestampUltima = localData['ultimaVerificacion'] as int? ?? 0;
-          final diferenciaDias = (DateTime.now().millisecondsSinceEpoch - timestampUltima) / (1000 * 60 * 60 * 24);
-
-          if (fueAutorizada && savedId.toUpperCase() == devId.toUpperCase() && diferenciaDias < 30) {
-            _cachedEstado = EstadoLicencia(
-              autorizada: true,
-              deviceId: devId,
-              nombreDispositivo: devName,
-              titular: localData['titular'] as String? ?? 'Usuario AACH',
-              estado: 'ACTIVO (Respaldo Local)',
-              tipoLicencia: localData['tipoLicencia'] as String? ?? 'Asignacion AACH',
-              fechaVencimiento: localData['fechaVencimiento'] as String? ?? '31/12/2099',
-              motivoBloqueo: '',
-            );
-            return _cachedEstado!;
-          }
-        }
-
-        await _eliminarTokenLocal();
-        _cachedEstado = EstadoLicencia(
-          autorizada: false,
-          deviceId: devId,
-          nombreDispositivo: devName,
-          titular: 'Dispositivo No Registrado',
-          estado: 'SIN LICENCIA',
-          tipoLicencia: 'Sin Autorización Activa',
-          fechaVencimiento: 'Pendiente de Alta',
-          motivoBloqueo:
-              'Este dispositivo no se encuentra dado de alta en la lista de licencias de Luis Gudiño. Envía tu ID por WhatsApp para activarlo.',
-        );
-        return _cachedEstado!;
       }
+
+      await _eliminarTokenLocal();
+      _cachedEstado = EstadoLicencia(
+        autorizada: false,
+        deviceId: devId,
+        nombreDispositivo: devName,
+        titular: 'Dispositivo No Registrado',
+        estado: 'SIN LICENCIA',
+        tipoLicencia: 'Sin Autorización Activa',
+        fechaVencimiento: 'Pendiente de Alta',
+        motivoBloqueo:
+            'Este dispositivo no se encuentra dado de alta en la lista de licencias de Luis Gudiño. Envía tu ID por WhatsApp para activarlo.',
+      );
+      return _cachedEstado!;
     } catch (_) {
-      // Error de red / sin internet
+      // Error de red / sin internet / portal cautivo
     }
 
     // 2. MODO OFFLINE / TERRENO:
