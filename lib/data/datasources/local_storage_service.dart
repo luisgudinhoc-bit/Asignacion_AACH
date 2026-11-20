@@ -206,4 +206,12 @@ class LocalStorageService {
   static Future<void> setDarkMode(bool isDark) async {
     await _settingsBox.put('is_dark_mode', isDark);
   }
+
+  static String? getString(String key) {
+    return _settingsBox.get(key) as String?;
+  }
+
+  static Future<void> setString(String key, String value) async {
+    await _settingsBox.put(key, value);
+  }
 }

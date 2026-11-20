@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
+import '../../data/datasources/licensing_service.dart';
 import '../../data/datasources/local_storage_service.dart';
 import '../../domain/models/ajustador_model.dart';
 import '../../domain/models/aseguradora_model.dart';
@@ -24,13 +26,41 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
   bool _isTestingSheet = false;
   bool _isSyncingAjustadores = false;
   bool _isSyncingAseguradoras = false;
+  EstadoLicencia? _licenciaActual;
+  bool _isValidatingLicencia = false;
 
   @override
   void initState() {
     super.initState();
+    _licenciaActual = LicensingService().estadoActual;
+    _cargarLicenciaAsync();
     final savedId = LocalStorageService.getSpreadsheetId();
     if (savedId.isNotEmpty) {
       _sheetIdController.text = savedId;
+    }
+  }
+
+  Future<void> _cargarLicenciaAsync() async {
+    final lic = await LicensingService().verificarLicencia(forzarRefresco: false);
+    if (mounted) setState(() => _licenciaActual = lic);
+  }
+
+  Future<void> _revalidarLicenciaManual() async {
+    setState(() => _isValidatingLicencia = true);
+    final lic = await LicensingService().verificarLicencia(forzarRefresco: true);
+    if (mounted) {
+      setState(() {
+        _licenciaActual = lic;
+        _isValidatingLicencia = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(lic.autorizada
+              ? 'Licencia activa confirmada en Google Sheets (${lic.titular}).'
+              : 'Estado de dispositivo: ${lic.estado}.'),
+          backgroundColor: lic.autorizada ? AppColors.secondary : Colors.redAccent,
+        ),
+      );
     }
   }
 
@@ -626,6 +656,134 @@ class _AjustesScreenState extends ConsumerState<AjustesScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          // 0. Control de Acceso y Licencia por Hardware ID
+          _buildSectionHeader('0. Control de Acceso y Licencia (Hardware ID)'),
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: AppColors.borderLight),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: (_licenciaActual?.autorizada ?? false)
+                            ? AppColors.secondary.withValues(alpha: 0.15)
+                            : Colors.red.withValues(alpha: 0.15),
+                        child: Icon(
+                          (_licenciaActual?.autorizada ?? false)
+                              ? Icons.verified_user_rounded
+                              : Icons.gpp_bad_rounded,
+                          color: (_licenciaActual?.autorizada ?? false)
+                              ? AppColors.secondary
+                              : Colors.redAccent,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              (_licenciaActual?.autorizada ?? false)
+                                  ? 'Dispositivo Autorizado'
+                                  : 'Acceso Restringido',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            Text(
+                              'Estado: ${_licenciaActual?.estado ?? "Verificando..."} • ${_licenciaActual?.titular ?? ""}',
+                              style: TextStyle(fontSize: 12, color: theme.hintColor),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppColors.surfaceDark : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.borderLight),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'ID PLACA HARDWARE:',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                            ),
+                            InkWell(
+                              onTap: () {
+                                if (_licenciaActual?.deviceId != null) {
+                                  Clipboard.setData(ClipboardData(text: _licenciaActual!.deviceId));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('ID de dispositivo copiado al portapapeles.')),
+                                  );
+                                }
+                              },
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.copy_rounded, size: 12, color: AppColors.primaryLight),
+                                  SizedBox(width: 4),
+                                  Text('Copiar ID', style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        SelectableText(
+                          _licenciaActual?.deviceId ?? 'Consultando ID...',
+                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isValidatingLicencia ? null : _revalidarLicenciaManual,
+                          icon: _isValidatingLicencia
+                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.sync_rounded, size: 16),
+                          label: const Text('Revalidar en Sheets', style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final uri = Uri.parse(
+                                'https://docs.google.com/spreadsheets/d/11iwmA57GhfX--GZCY9ZGOSjN8Ah2Syhpu44LZii8NSs');
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          },
+                          icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                          label: const Text('Hoja de Licencias', style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // 1. Vinculación Google OAuth 2.0
           _buildSectionHeader('1. Cuenta de Google (OAuth 2.0)'),
           Card(

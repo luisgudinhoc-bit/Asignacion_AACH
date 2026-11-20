@@ -27,6 +27,7 @@ dependencies:
   http: ^1.2.2
 
   # Hardware & Device Integration
+  device_info_plus: ^10.1.0
   geolocator: ^12.0.0
   url_launcher: ^6.3.0
   share_plus: ^10.0.0
