@@ -30,7 +30,7 @@ class EstadoLicencia {
     this.tipoLicencia = 'Asignacion AACH',
     this.fechaVencimiento = 'Pendiente',
     this.contactoAdmin = 'Luis Gudiño',
-    this.telefonoAdmin = '+52 477 377 1473',
+    this.telefonoAdmin = '+52 442 377 1473',
     this.motivoBloqueo = '',
   });
 
@@ -456,7 +456,7 @@ class LicensingService {
                     tipoLicencia: tipoLic.isNotEmpty ? tipoLic : 'Asignacion AACH',
                     fechaVencimiento: vencimiento,
                     motivoBloqueo:
-                        'Dispositivo suspendido o bloqueado por Luis Gudiño en Google Sheets. Comunícate al +52 477 377 1473.',
+                        'Dispositivo suspendido o bloqueado por Luis Gudiño en Google Sheets. Comunícate al +52 442 377 1473.',
                   );
                   return _cachedEstado!;
                 }
@@ -472,7 +472,7 @@ class LicensingService {
                     tipoLicencia: tipoLic.isNotEmpty ? tipoLic : 'Asignacion AACH',
                     fechaVencimiento: vencimiento,
                     motivoBloqueo:
-                        'El periodo de activación expiró el $vencimiento. Comunícate con Luis Gudiño (+52 477 377 1473).',
+                        'El periodo de activación expiró el $vencimiento. Comunícate con Luis Gudiño (+52 442 377 1473).',
                   );
                   return _cachedEstado!;
                 }
@@ -504,7 +504,7 @@ class LicensingService {
                   tipoLicencia: tipoLic,
                   fechaVencimiento: vencimiento,
                   motivoBloqueo:
-                      'Estado "$estadoEnSheet" no autorizado. Contacta a Luis Gudiño (+52 477 377 1473).',
+                      'Estado "$estadoEnSheet" no autorizado. Contacta a Luis Gudiño (+52 442 377 1473).',
                 );
                 return _cachedEstado!;
               }
