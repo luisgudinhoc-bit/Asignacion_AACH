@@ -5,6 +5,10 @@ class AppConstants {
   static const String defaultSpreadsheetTitle = 'CONTROL_OPERATIVO_AACH_2026';
   static const String defaultSpreadsheetId = '1mh_cS0wWdEYFhUn0lRergJc6UPVcMKAhymgasAr4e0w';
 
+  // URL oficial del Webhook de Apps Script para sincronización directa con MAGG Receptor
+  static const String defaultWebhookUrl =
+      'https://script.google.com/macros/s/AKfycbwWbTwn7I3F23aEj-elB0bwMGdRNHX0BhMs38fBHOnA4VLMesWZUP1daDqqojcqJnI/exec';
+
   // Hive Boxes
   static const String siniestrosBox = 'siniestros_box_v1';
   static const String ajustadoresBox = 'ajustadores_box_v1';

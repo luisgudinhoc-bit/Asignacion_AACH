@@ -67,7 +67,9 @@ function doPost(e) {
 
     for (let i = 1; i < data.length; i++) {
       const rep = (data[i][3] || "").toString().trim().toLowerCase();
-      if (rep === cleanFolio || (cleanFolio.length >= 5 && rep.includes(cleanFolio))) {
+      if (rep === cleanFolio || 
+          (cleanFolio.length >= 4 && rep.includes(cleanFolio)) ||
+          (rep.length >= 4 && cleanFolio.includes(rep))) {
         targetRow = i + 1; // 1-based index de Google Sheets
         break;
       }
