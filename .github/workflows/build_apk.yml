@@ -49,6 +49,7 @@ jobs:
         with:
           name: Asignacion-AACH-Release-APK
           path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 1
           if-no-files-found: error
 
       - name: Publicar Release Oficial Asignación AACH
